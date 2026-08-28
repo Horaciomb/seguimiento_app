@@ -1,0 +1,95 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@theme inline {
+  --font-sans: 'Inter Variable', sans-serif;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+/* Misma paleta Navy + Lime + Ivory de rrhh-app (src/index.css), para que ambas apps se
+   vean como del mismo sistema si algún día conviven en la misma pantalla del usuario. */
+:root {
+  --background: #f5f7f0;
+  --foreground: #1a2744;
+  --card: #ffffff;
+  --card-foreground: #1a2744;
+  --popover: #ffffff;
+  --popover-foreground: #1a2744;
+  --primary: #1a2744;
+  --primary-foreground: #f0f2ec;
+  --secondary: #eef2e4;
+  --secondary-foreground: #1a2744;
+  --muted: #ebeee5;
+  --muted-foreground: #3d5278;
+  --accent: #e8edda;
+  --accent-foreground: #1a2744;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: #fefefe;
+  --border: #dde1d6;
+  --input: #dde1d6;
+  --ring: #c8e632;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: #111c2e;
+  --foreground: #e4e8ee;
+  --card: #1a2744;
+  --card-foreground: #e4e8ee;
+  --popover: #1a2744;
+  --popover-foreground: #e4e8ee;
+  --primary: #c8e632;
+  --primary-foreground: #1a2744;
+  --secondary: #1f3056;
+  --secondary-foreground: #cdd5e0;
+  --muted: #1f3056;
+  --muted-foreground: #8899b4;
+  --accent: #243555;
+  --accent-foreground: #e4e8ee;
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: #fefefe;
+  --border: #2a4270;
+  --input: #2a4270;
+  --ring: #c8e632;
+}
