@@ -117,9 +117,12 @@ esta app existe para recopilar), no solo si contestó o no.
 
 - **Botón de WhatsApp** (`frontend/src/lib/whatsapp.js`, `armarLinkWhatsapp()`): arma un link
   `wa.me` con el teléfono (anteponiendo `591`, los números de `empleado_unidad.telefono` son
-  locales de 8 dígitos) y un mensaje inicial editable. Es un `<a target="_blank">` renderizado
-  vía el prop `render` de `@base-ui/react` sobre el componente `Button` — abre el chat en una
-  pestaña nueva, **no registra nada por sí solo**.
+  locales de 8 dígitos) y un saludo inicial editable — **simplificado a `Hola, <Nombre>` el
+  2026-08-31** a pedido del usuario (antes tenía un mensaje largo predefinido explicando el
+  motivo del contacto; se acortó porque la conversación real la lleva quien llama, no un
+  texto enlatado). Es un `<a target="_blank">` renderizado vía el prop `render` de
+  `@base-ui/react` sobre el componente `Button` — abre el chat en una pestaña nueva, **no
+  registra nada por sí solo**.
 - **"Registrar" queda separado del botón de WhatsApp a propósito**: la respuesta de la
   persona llega después de la conversación, no en el momento de abrir el chat, así que
   acoplar los dos hubiera forzado a llenar el formulario antes de tener qué contar.
@@ -139,6 +142,79 @@ Verificado end-to-end vía HTTP contra `rrhh_bd_dev` (POST con `medio_contacto`+
 `motivo_bajo_rendimiento`, enriquecimiento en `/alertas/inactividad`). El `render` prop del
 `Button` sobre un `<a>` se probó con SSR (`renderToStaticMarkup`) antes de confiar en él, ya
 que la automatización de Chrome no funcionaba esta sesión.
+
+## Filtros y orden en Inactividad (2026-08-31)
+
+Pedido del usuario tras probar la app en local: poder filtrar la lista de Inactividad por
+Unidad, Supervisor y Tramo, y ordenarla por fecha de última afiliación de menor a mayor.
+
+- **`frontend/src/hooks/useAlertaListState.js`**: el hook genérico (antes solo filtro de
+  texto + paginación) ahora también soporta `camposFiltro` (array de nombres de campo → un
+  `SelectField` por campo, con opciones calculadas sobre el total sin filtrar para que no se
+  achiquen entre sí) y `sort`/`onSortChange` (un solo campo ordenable a la vez, tres estados
+  por click: asc → desc → sin orden). Genérico a propósito para poder reusarse en las otras
+  3 pestañas si hace falta más adelante, aunque por ahora solo se activó en Inactividad.
+- **`frontend/src/components/seguimiento/TablaAlertas.jsx`**: las columnas pueden declarar
+  `sortKey` — si lo tienen, el header se renderiza como botón clickeable con flecha
+  (`ArrowUp`/`ArrowDown` de lucide-react) indicando el sentido actual.
+- **`frontend/src/pages/SeguimientoPage.jsx`**: la pestaña Inactividad pasa
+  `filtroCampos={[unidad_negocio, supervisor, tramo]}` y la columna "Última afiliación"
+  lleva `sortKey: 'fecha_ultima_afiliacion'`. Las otras 3 pestañas quedaron sin filtros
+  adicionales — no se pidieron ahí.
+- Se sacó además la bajada descriptiva bajo el título "Seguimiento de indicadores" (pedido
+  explícito del usuario, sin reemplazo).
+
+Todo esto es client-side (arrays ya traídos por `useQuery`) — no hay cambios de backend ni
+de query SQL para esta parte.
+
+## Migraciones aplicadas en `rrhh_bd` (producción)
+
+**Qué son y por qué existen:** `seguimiento_llamada` es la única tabla propia de esta app
+(§"La única tabla propia" arriba) — no la trae Lab 001, así que hay que crearla a mano con
+DDL. Dos migraciones, ambas en `backend/migrations/`, ambas **idempotentes**
+(`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `ADD CONSTRAINT` guardado en un
+`DO $$ ... END $$` que chequea `pg_constraint` antes de agregar):
+
+| Migración | Qué hace |
+|---|---|
+| `001_create_seguimiento_llamada.sql` | Crea la tabla completa (columnas, `CHECK` en `fuente`/`resultado`, índice por `id_empleado`, `GRANT SELECT/INSERT/UPDATE` a `bex_app`) |
+| `002_add_medio_y_motivo.sql` | Agrega `medio_contacto` y `motivo_bajo_rendimiento` (ver sección de WhatsApp arriba) con sus `CHECK` de valores válidos |
+
+**Cronología real:**
+- **2026-08-28** — ambas aplicadas primero en `rrhh_bd_dev`, para desarrollar y probar sin
+  tocar producción.
+- **2026-08-31** — aplicadas en `rrhh_bd` (prod), **con confirmación explícita del usuario
+  en el chat antes de correrlas** (es una base compartida en producción, no se tocó sin
+  preguntar). Repetidas ahí porque prod nunca corrió estas migraciones — solo dev las tenía
+  hasta ese momento.
+
+**Cómo se aplicaron (mecanismo, no manual — quedó en el historial de la sesión, no hay
+script versionado para esto todavía):** un script Python puntual con `psycopg2`, conectando
+como el rol `bex_ingeniero` (dueño de las tablas — `bex_app` no puede hacer DDL) contra
+`10.0.0.2:5432` / `rrhh_bd`, con la contraseña tomada de la variable de entorno
+`RRHH_PG_PASSWORD` (mismo patrón que usa Lab 001 para sus propias migraciones — ver
+`Lab 001/.claude/rules/10-credenciales-y-conexiones.md`). El script leyó y ejecutó el SQL de
+los dos archivos tal cual están en el repo, en orden (`001` y después `002`), con
+`autocommit = True`.
+
+**Verificación post-migración (contra prod, no contra dev):**
+- `information_schema.columns` sobre `seguimiento_llamada` → confirmadas las 13 columnas
+  esperadas, incluyendo `medio_contacto` (`NOT NULL DEFAULT 'LLAMADA'`) y
+  `motivo_bajo_rendimiento` (nullable) de la migración 002.
+- `information_schema.role_table_grants` → confirmado que `bex_app` tiene
+  `SELECT`/`INSERT`/`UPDATE` sobre la tabla (además apareció `DELETE`, heredado de un
+  privilegio por defecto del esquema, no otorgado por esta migración — no es un problema,
+  simplemente no hacía falta pedirlo).
+- Más tarde, ya con la app desplegada, se probó un `POST /llamadas` real contra la URL
+  pública de producción (ver sección de Despliegue) y se confirmó que insertó una fila real
+  en `seguimiento_llamada` en `rrhh_bd` — la prueba de fuego de que las columnas y el rol
+  quedaron bien. Esa fila de prueba se borró después con un DELETE puntual (mismo mecanismo:
+  `bex_ingeniero` + `RRHH_PG_PASSWORD`).
+
+⚠️ **Nada de esto se corrió con un script versionado en el repo** — fue un script ad-hoc
+armado en el momento, ejecutado y descartado. Si hace falta repetir esta operación (por
+ejemplo, una migración `003` futura), conviene guardar el script real en
+`backend/migrations/aplicar_migracion.py` o similar en vez de rehacerlo desde cero cada vez.
 
 ## Verificado el 2026-08-28
 
