@@ -81,10 +81,10 @@ modo de falla ya documentado varias veces entre Lab 001 y `rrhh-app`, ver Lab 00
 es bajo. Si hace falta que sobreviva un re-clon de dev, coordinar con Lab 001 para sumarla a
 su inventario (mismo tratamiento que le dieron a `banco`/`TRABAJITO`).
 
-**Aplicada en `rrhh_bd_dev` el 2026-08-28** (rol `bex_ingeniero`). **Pendiente de aplicar en
-`rrhh_bd` (prod)** — no se aplicó sin confirmación explícita porque es una base compartida
-en producción; correr `001_create_seguimiento_llamada.sql` contra prod antes de desplegar
-el backend ahí.
+**Aplicada en `rrhh_bd_dev` el 2026-08-28** (rol `bex_ingeniero`). **Aplicada en `rrhh_bd`
+(prod) el 2026-08-31**, con confirmación explícita del usuario (rol `bex_ingeniero`,
+`RRHH_PG_PASSWORD`) — junto con `002_add_medio_y_motivo.sql`. Verificado por columnas
+(`information_schema.columns`) y grants de `bex_app` sobre la tabla.
 
 ## Cómo correrlo en desarrollo
 
@@ -131,6 +131,7 @@ esta app existe para recopilar), no solo si contestó o no.
     `PERSONAL_FAMILIAR`, `OTRO_TRABAJO`, `NO_LE_GUSTA_TURNO`, `PAGO_COMISIONES`,
     `DIFICULTAD_SISTEMA`, `SIN_MOTIVO_CLARO`, `OTRO`) — decisión tomada con el usuario para
     poder reportar "cuántos se van por X motivo" sin leer notas de texto libre a mano.
+  - Aplicada en `rrhh_bd_dev` y en `rrhh_bd` (prod, 2026-08-31).
 - Se muestran en la celda "Último contacto" de la tabla (ícono de WhatsApp + motivo) y en el
   historial completo por persona.
 
