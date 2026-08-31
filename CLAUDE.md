@@ -163,9 +163,9 @@ no por descuido:
 | Carpeta backend | `C:\Proyectos\rrhh\apps\seguimiento\` | Mismo patrón que `apps\sistema_personal` |
 | Carpeta frontend | `C:\Proyectos\rrhh\web\seguimiento\` | Mismo patrón que `web\personal` |
 | venv | **Compartido**: `C:\uv-envs\rrhh\Scripts\python.exe` | Ya tenía (2026-08-31) exactamente las versiones de `requirements.txt` — instalar ahí es un no-op. Lo comparten `sistema-personal` y `web_validador_vetados` |
-| Puerto backend | `8219` | Siguiente libre en el rango secuencial 8200–8221 que usa el Caddyfile para apps nuevas |
+| Puerto backend | `8222` | ⚠️ El Caddyfile sugería 8219/8220 como libres (no aparecían en ninguna ruta), pero `netstat -ano` mostró que **ambos ya estaban ocupados** por procesos Python sin ruta en Caddy (igual que 8200–8218 y 8221). El Caddyfile documenta rutas, no puertos realmente libres — antes de asignar un puerto hay que verificar con `netstat`, no solo grepear el Caddyfile |
 | Servicio nssm | `web_rrhh_seguimiento` | Patrón `web_<unidad>_<app>` de la mayoría de los servicios del servidor |
-| Cuenta de servicio | **Compartida**: `.\bex_svc_rrhh` | Misma cuenta que ya usan `sistema-personal` y `web_validador_vetados` |
+| Cuenta de servicio | `LocalSystem` | Se intentó reusar `.\bex_svc_rrhh` (la de `sistema-personal`/`web_validador_vetados`) pero esa contraseña no la maneja el usuario. Usar `Administrator` le habría dado a este backend permisos de admin total del servidor compartido. `LocalSystem` es el mismo patrón que ya usan `web_bille_afilia`, `web_bnb_feriasiv`, `web_kiosco_afilia`, `web_zas_produccion` en este servidor |
 | Ruta pública | `/rrhh/seguimiento/` (API en `/rrhh/seguimiento/api/*`) | Mismo patrón que `/rrhh/personal/` |
 | Acceso | Excluida del `basic_auth` genérico de `/rrhh/*` (igual que `personal`/`form`/`vetados`) | Coherente con la decisión "sin login propio" |
 | DB en prod | `rrhh_bd` (no `rrhh_bd_dev`) | Migraciones 001 y 002 ya aplicadas ahí (ver arriba) |
@@ -191,15 +191,21 @@ venv-vs-nssm-Application, stop/wait/start en vez de `nssm restart`, swap con car
 temporal con timestamp, health check con reintentos) — ver ese repo para el detalle de por
 qué cada guarda existe (cada una nació de un incidente real documentado ahí).
 
-⚠️ **Provisión inicial del servidor (una sola vez, hecha el 2026-08-31):** los scripts de
-`deploy/` asumen que el servicio nssm y las carpetas remotas ya existen — no las crean.
-Antes del primer deploy hubo que, en este orden: crear
-`C:\Proyectos\rrhh\apps\seguimiento\{app,logs}` y `C:\Proyectos\rrhh\web\seguimiento\`;
-crear a mano el `.env` de prod en el servidor (nunca versionado); hacer el primer `scp` de
-código a mano; instalar dependencias en el venv compartido; registrar el servicio nssm
-`web_rrhh_seguimiento` (la asignación de `ObjectName .\bex_svc_rrhh` con su contraseña la
-corrió el usuario directamente, no es una credencial que deba manejar un agente); y agregar
-el bloque `/rrhh/seguimiento/*` al `Caddyfile` (`C:\Caddy\Caddyfile`, su propio repo git en
-el servidor) **antes** del `handle_path /rrhh/*` genérico, con `caddy.exe validate` en verde
-antes de cualquier `reload` — un reload con el Caddyfile roto puede tumbar las ~20 apps que
-sirve, no solo esta.
+✅ **Desplegado y verificado en prod el 2026-08-31.** Provisión inicial hecha en este orden:
+crear `C:\Proyectos\rrhh\apps\seguimiento\{app,logs}` y `C:\Proyectos\rrhh\web\seguimiento\`;
+crear a mano el `.env` de prod en el servidor (nunca versionado, contraseña de `bex_app`
+copiada server-side desde el `.env` de `sistema_personal`); primer `scp` de código a mano
+(backend y frontend); `uv pip install` en el venv compartido (confirmado no-op); registrar
+el servicio nssm `web_rrhh_seguimiento` (`LocalSystem`, puerto `8222`); agregar el bloque
+`/rrhh/seguimiento/*` al `Caddyfile` (`C:\Caddy\Caddyfile`, su propio repo git en el
+servidor) **antes** del `handle_path /rrhh/*` genérico, subido primero como
+`Caddyfile.new` y validado con `caddy.exe validate` (verde) antes de reemplazar el archivo
+real (con backup `Caddyfile.bak_20260831-113607`) y recién ahí `caddy.exe reload`.
+
+Verificado end-to-end contra la URL pública: `GET /rrhh/seguimiento/api/health` → `{"status":
+"ok", "database": "conectado"}`; `GET /rrhh/seguimiento/` sirve el `index.html` con los
+assets bajo `/rrhh/seguimiento/assets/`; `POST /rrhh/seguimiento/api/llamadas` insertó una
+fila real en `rrhh_bd` (borrada después, era solo de prueba). Se confirmó que otras apps del
+mismo servidor (`sistema-personal`, `vetados`, `form`) siguen respondiendo igual después del
+`reload` de Caddy. `/rrhh/form` sigue devolviendo 404 en su ruta raíz — es un bug
+**preexistente** ya documentado en `rrhh-app/CLAUDE.md`, no una regresión de este cambio.
