@@ -124,7 +124,7 @@ esta app existe para recopilar), no solo si contestó o no.
   persona llega después de la conversación, no en el momento de abrir el chat, así que
   acoplar los dos hubiera forzado a llenar el formulario antes de tener qué contar.
 - **Dos columnas nuevas en `seguimiento_llamada`** (`migrations/002_add_medio_y_motivo.sql`,
-  aplicada en `rrhh_bd_dev`, **pendiente en prod** igual que `001`):
+  aplicada en `rrhh_bd_dev` y en `rrhh_bd` prod el 2026-08-31):
   - `medio_contacto` (`LLAMADA` · `WHATSAPP` · `OTRO`, default `WHATSAPP` en el formulario —
     es el canal que se está empujando)
   - `motivo_bajo_rendimiento`, categorizado con "Otro" de escape (`SALUD`,
@@ -149,3 +149,57 @@ tiempo). `POST /llamadas` + historial + enriquecimiento de "última llamada" pro
 end-to-end vía HTTP real. Frontend: `npm run build` compila sin errores (3007 módulos). No
 se pudo probar visualmente en navegador esta sesión (la automatización de Chrome no
 respondía) — falta un recorrido manual en el navegador antes de darlo por completo.
+
+## Despliegue (servidor `srv.beneficioslatam.com` / `10.0.0.2`)
+
+Mismo servidor que `rrhh-app` (Windows Server 2025, Caddy v2.11.2 como reverse proxy,
+servicios Windows con nssm). `seguimiento_app` no tenía ningún despliegue propio hasta el
+2026-08-31 — las coordenadas de abajo se relevaron del servidor real (no de la
+documentación de `rrhh-app`), y varias piezas se **comparten con `rrhh-app` a propósito**,
+no por descuido:
+
+| Coordenada | Valor | Por qué |
+|---|---|---|
+| Carpeta backend | `C:\Proyectos\rrhh\apps\seguimiento\` | Mismo patrón que `apps\sistema_personal` |
+| Carpeta frontend | `C:\Proyectos\rrhh\web\seguimiento\` | Mismo patrón que `web\personal` |
+| venv | **Compartido**: `C:\uv-envs\rrhh\Scripts\python.exe` | Ya tenía (2026-08-31) exactamente las versiones de `requirements.txt` — instalar ahí es un no-op. Lo comparten `sistema-personal` y `web_validador_vetados` |
+| Puerto backend | `8219` | Siguiente libre en el rango secuencial 8200–8221 que usa el Caddyfile para apps nuevas |
+| Servicio nssm | `web_rrhh_seguimiento` | Patrón `web_<unidad>_<app>` de la mayoría de los servicios del servidor |
+| Cuenta de servicio | **Compartida**: `.\bex_svc_rrhh` | Misma cuenta que ya usan `sistema-personal` y `web_validador_vetados` |
+| Ruta pública | `/rrhh/seguimiento/` (API en `/rrhh/seguimiento/api/*`) | Mismo patrón que `/rrhh/personal/` |
+| Acceso | Excluida del `basic_auth` genérico de `/rrhh/*` (igual que `personal`/`form`/`vetados`) | Coherente con la decisión "sin login propio" |
+| DB en prod | `rrhh_bd` (no `rrhh_bd_dev`) | Migraciones 001 y 002 ya aplicadas ahí (ver arriba) |
+| CORS en prod | vacío | Frontend y API comparten origen detrás de Caddy |
+
+**Cambios en el repo para esto:** `frontend/vite.config.js` usa `base: '/rrhh/seguimiento/'`
+solo en build (`command === 'build'`) — en dev sigue sirviendo en `/` para no romper
+`http://localhost:5174/`. `frontend/.env.production` fija
+`VITE_API_URL=/rrhh/seguimiento/api` (Vite lo carga solo para `npm run build`).
+
+**Deploy del día a día** (una vez que el servicio y las carpetas ya existen en el servidor,
+ver provisión inicial más abajo):
+
+```powershell
+cd deploy
+.\deploy-backend.ps1     # aborta si backend/app está sucio · scp app/ + uv pip install en el
+                          # venv compartido + sc stop/start web_rrhh_seguimiento + health check
+.\deploy-frontend.ps1    # npm run build + scp a dist_up_<timestamp> + swap atómico → dist
+```
+
+Ambos son una adaptación literal de `rrhh-app/deploy/*.ps1` (mismas guardas: árbol sucio,
+venv-vs-nssm-Application, stop/wait/start en vez de `nssm restart`, swap con carpeta
+temporal con timestamp, health check con reintentos) — ver ese repo para el detalle de por
+qué cada guarda existe (cada una nació de un incidente real documentado ahí).
+
+⚠️ **Provisión inicial del servidor (una sola vez, hecha el 2026-08-31):** los scripts de
+`deploy/` asumen que el servicio nssm y las carpetas remotas ya existen — no las crean.
+Antes del primer deploy hubo que, en este orden: crear
+`C:\Proyectos\rrhh\apps\seguimiento\{app,logs}` y `C:\Proyectos\rrhh\web\seguimiento\`;
+crear a mano el `.env` de prod en el servidor (nunca versionado); hacer el primer `scp` de
+código a mano; instalar dependencias en el venv compartido; registrar el servicio nssm
+`web_rrhh_seguimiento` (la asignación de `ObjectName .\bex_svc_rrhh` con su contraseña la
+corrió el usuario directamente, no es una credencial que deba manejar un agente); y agregar
+el bloque `/rrhh/seguimiento/*` al `Caddyfile` (`C:\Caddy\Caddyfile`, su propio repo git en
+el servidor) **antes** del `handle_path /rrhh/*` genérico, con `caddy.exe validate` en verde
+antes de cualquier `reload` — un reload con el Caddyfile roto puede tumbar las ~20 apps que
+sirve, no solo esta.
