@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import SelectField from '@/components/ui/select-field'
 import PaginationBar from '@/components/ui/pagination-bar'
 import EstadoLista from '@/components/ui/estado-lista'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -16,8 +17,12 @@ const TRAMO_VARIANT = {
   'REVISAR BAJA': 'destructive',
 }
 
-function Panel({ titulo, descripcion, fuente, estado, columns }) {
-  const { q, setQ, page, setPage, pageSize, items, total, isLoading, isError, error, refetch,
+// Sentinel para la opción "todos" de cada filtro — el Select no admite value="" como item.
+const TODOS = '__todos__'
+
+function Panel({ titulo, descripcion, fuente, estado, columns, filtroCampos }) {
+  const { q, setQ, filtros, setFiltro, opcionesFiltro, sort, onSortChange,
+    page, setPage, pageSize, items, total, isLoading, isError, error, refetch,
     llamadaFila, setLlamadaFila, historialEmpleado, setHistorialEmpleado, llamadaMut } = estado
 
   return (
@@ -27,12 +32,26 @@ function Panel({ titulo, descripcion, fuente, estado, columns }) {
         <p className="text-sm text-muted-foreground">{descripcion}</p>
       </div>
 
-      <Input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar por nombre, CI, teléfono o supervisor…"
-        className="max-w-sm"
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por nombre, CI, teléfono o supervisor…"
+          className="max-w-sm"
+        />
+        {filtroCampos?.map(({ campo, label }) => (
+          <SelectField
+            key={campo}
+            value={filtros[campo] || TODOS}
+            onValueChange={(v) => setFiltro(campo, v === TODOS ? '' : v)}
+            items={[
+              { value: TODOS, label: `${label}: todos` },
+              ...opcionesFiltro[campo].map((v) => ({ value: v, label: v })),
+            ]}
+            triggerClassName="w-48"
+          />
+        ))}
+      </div>
 
       {isError ? (
         <EstadoLista error={error} onReintentar={refetch} />
@@ -45,6 +64,8 @@ function Panel({ titulo, descripcion, fuente, estado, columns }) {
             items={items}
             onRegistrarLlamada={setLlamadaFila}
             onVerHistorial={setHistorialEmpleado}
+            sort={sort}
+            onSortChange={onSortChange}
           />
           <PaginationBar page={page} pageSize={pageSize} total={total} onPageChange={setPage} />
         </>
@@ -65,6 +86,7 @@ export default function SeguimientoPage() {
   const inactividad = useAlertaListState({
     queryKey: ['alertas', 'inactividad'],
     queryFn: () => getInactividad().then((r) => r.data),
+    camposFiltro: ['unidad_negocio', 'supervisor', 'tramo'],
   })
   const turnos = useAlertaListState({
     queryKey: ['alertas', 'turnos'],
@@ -83,9 +105,6 @@ export default function SeguimientoPage() {
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-4">
       <div>
         <h1 className="text-2xl font-bold">Seguimiento de indicadores</h1>
-        <p className="text-sm text-muted-foreground">
-          A quién llamar hoy, según los indicadores de control de Lab 001, y qué pasó la última vez.
-        </p>
       </div>
 
       <Tabs defaultValue="inactividad">
@@ -102,10 +121,15 @@ export default function SeguimientoPage() {
             descripcion="Afiliadores sin registrar una sola afiliación en varios días hábiles."
             fuente="INACTIVIDAD"
             estado={inactividad}
+            filtroCampos={[
+              { campo: 'unidad_negocio', label: 'Unidad' },
+              { campo: 'supervisor', label: 'Supervisor' },
+              { campo: 'tramo', label: 'Tramo' },
+            ]}
             columns={[
               { header: 'Tramo', cell: (r) => <Badge variant={TRAMO_VARIANT[r.tramo] ?? 'secondary'}>{r.tramo}</Badge> },
               { header: 'Días inactivo', cell: (r) => r.dias_inactividad },
-              { header: 'Última afiliación', cell: (r) => fmtFechaCorta(r.fecha_ultima_afiliacion) },
+              { header: 'Última afiliación', sortKey: 'fecha_ultima_afiliacion', cell: (r) => fmtFechaCorta(r.fecha_ultima_afiliacion) },
             ]}
           />
         </TabsContent>
