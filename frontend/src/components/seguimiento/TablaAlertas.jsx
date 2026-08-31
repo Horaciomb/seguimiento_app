@@ -1,4 +1,4 @@
-import { MessageCircle, ClipboardCheck, History } from 'lucide-react'
+import { MessageCircle, ClipboardCheck, History, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -70,7 +70,7 @@ function CeldaUltimoContacto({ ultima }) {
  * constancia de qué pasó y por qué — no se acoplan porque la respuesta de la persona llega
  * después de la conversación, no en el momento de abrir el chat.
  */
-export default function TablaAlertas({ columns, items, onRegistrarLlamada, onVerHistorial, colSpanVacio }) {
+export default function TablaAlertas({ columns, items, onRegistrarLlamada, onVerHistorial, colSpanVacio, sort, onSortChange }) {
   return (
     <div className="border rounded-lg overflow-hidden">
       <Table>
@@ -81,7 +81,22 @@ export default function TablaAlertas({ columns, items, onRegistrarLlamada, onVer
             <TableHead>Supervisor</TableHead>
             <TableHead>Proyecto</TableHead>
             {columns.map((c) => (
-              <TableHead key={c.header}>{c.header}</TableHead>
+              <TableHead key={c.header}>
+                {c.sortKey ? (
+                  <button
+                    type="button"
+                    onClick={() => onSortChange?.(c.sortKey)}
+                    className="flex items-center gap-1 hover:text-foreground"
+                  >
+                    {c.header}
+                    {sort?.key === c.sortKey && (
+                      sort.dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                    )}
+                  </button>
+                ) : (
+                  c.header
+                )}
+              </TableHead>
             ))}
             <TableHead>Último contacto</TableHead>
             <TableHead className="w-44" />
