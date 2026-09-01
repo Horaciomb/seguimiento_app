@@ -46,7 +46,7 @@ frontend/  React 19 + Vite + Tailwind v4 + TanStack Query, SIN login/router.
 | Endpoint | Qué hace |
 |---|---|
 | `GET /alertas/inactividad` | `vw_alerta_inactividad`, `estado_medicion='MEDIDO' AND tramo IN ('SEGUIMIENTO','CRITICO','REVISAR BAJA')` — mismo filtro que la hoja "alerta" de `14_alerta_inactividad_afiliadores.py` |
-| `GET /alertas/turnos` | `vw_alerta_turnos`, NOCHE/MADRUGADA, **último cálculo por turno** (no una ventana) — mismo filtro que la hoja "alerta" de `15_actividad_por_turno.py` (2026-08-28) |
+| `GET /alertas/turnos` | `vw_alerta_turnos`, **los 4 turnos**, **último cálculo por turno** (no una ventana) — ver §"Los 4 turnos" (2026-09-01) |
 | `GET /alertas/reincidencia` | Replica `armar_resumen_por_persona()` de `17_exportar_alerta_turnos.py`: ventana de `dias` (default 30), agrupado por empleado, `veces_en_alerta >= minimo_veces` (default 3) |
 | `GET /alertas/produccion-mtd` | Los 4 filtros de `18b_exportar_produccion_mtd.py`: MEDIDO, promedio≥10, actual≤promedio, excluir a quien ya está en alerta de Inactividad o de Turnos (NOCHE/MADRUGADA, último cálculo) |
 | `POST /llamadas` | Inserta en `seguimiento_llamada` |
@@ -247,6 +247,56 @@ quienes falta preguntarles.
 Verificado end-to-end contra `rrhh_bd_dev` vía HTTP: las 4 rutas devuelven la distribución
 esperada, un `POST /llamadas` con `disponibilidad` la deja `REGISTRADA`, y un `POST`
 posterior **sin** ese campo no la pisa. Las filas de prueba se borraron.
+
+## Los 4 turnos en la pestaña de Turnos (2026-09-01)
+
+Pregunta del usuario: *"¿por qué no veo a los que no subieron más de 5 personas en la
+mañana?"*. No era un problema de datos — la alerta existía en Lab 001 y esta app la
+filtraba.
+
+`config_umbral_turno` tiene umbrales para los 4 turnos, con **dos operadores distintos**:
+
+| Turno | Regla | Qué detecta |
+|---|---|---|
+| NOCHE, MADRUGADA | `> 10` | Carga sospechosa fuera de horario |
+| MAÑANA, TARDE | `< 5` | **Bajo rendimiento** |
+
+`_TURNOS_SQL` traía hardcodeado `turno IN ('NOCHE','MADRUGADA')`, heredado de replicar la
+hoja "alerta" de `15_actividad_por_turno.py` — así que MAÑANA/TARDE nunca llegaban al
+frontend. En `rrhh_bd_dev` eso escondía **349 personas en alerta de MAÑANA y 338 de TARDE**
+(contra 2 de MADRUGADA y 4 de NOCHE).
+
+- **`alertas_service.get_turnos`** ya no filtra por turno: el CTE `ultima_fecha` agrupa por
+  turno y cada uno entra con **su propia última fecha calculada** (Lab 001 no siempre cierra
+  los 4 el mismo día — visto en dev: MAÑANA/MADRUGADA al 21/08, NOCHE/TARDE al 20/08).
+- **El orden depende del operador**: `CASE WHEN operador = '<' THEN cantidad ELSE -cantidad
+  END`, para que "lo peor" quede primero en los dos sentidos (la cantidad más baja con `<`,
+  la más alta con `>`). El `ORDER BY cantidad DESC` anterior habría puesto último al que
+  produjo 0 en la mañana.
+- **La UI no necesitó nada nuevo**: la pestaña de Turnos ya tenía el filtro por `turno` del
+  `camposFiltro` genérico. Sólo se actualizó la bajada y se sumó `sortKey` a las columnas
+  Cantidad y Fecha, porque con ~700 filas ordenar dejó de ser opcional.
+
+⚠️ **Dos filtros siguen a propósito en NOCHE/MADRUGADA, y no hay que "arreglarlos":**
+
+1. **Reincidencia** (`_TURNOS_REINCIDENCIA`, la constante que quedó): ese indicador existe
+   para detectar el *hábito* de cargar fuera de horario. Sumarle MAÑANA/TARDE cambiaría en
+   silencio el `veces_en_alerta` de cada persona y sus números dejarían de cuadrar con el
+   Excel de `17_exportar_alerta_turnos.py`.
+2. **La exclusión de Producción MTD** (literal dentro de `_PRODUCCION_MTD_SQL`): es uno de
+   los 4 filtros de `18b`. Con `< 5` alertando a ~90% de los medidos, sumarlo ahí dejaría la
+   pestaña de Producción MTD prácticamente vacía.
+
+⚠️ **El umbral `< 5` marca a casi todo el mundo** (349 de 384 medidos en el último cálculo
+de dev, 91%). Como lista de trabajo es poco accionable tal cual; si JP la va a usar en
+serio, conviene revisar ese número con Lab 001 (vive en `config_umbral_turno`, cambiarlo
+recolorea toda la historia sin recalcular nada). Se deja como está porque el criterio es de
+Lab 001, no de esta app.
+
+Verificado contra `rrhh_bd_dev` llamando a los 4 servicios: turnos pasa de 6 a **693**
+(2 MADRUGADA + 349 MAÑANA + 4 NOCHE + 338 TARDE), con el orden correcto en los dos sentidos;
+**inactividad (119), reincidencia (32) y producción MTD (105) quedan idénticos**, que era el
+punto. `npm run build` compila.
 
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
