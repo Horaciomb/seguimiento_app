@@ -39,6 +39,12 @@ class _PersonaBase(BaseModel):
     disponibilidad_origen: Optional[Literal["REGISTRADA", "RECLUTAMIENTO"]] = None
     disponibilidad_registrado_por: Optional[str] = None
     disponibilidad_actualizada: Optional[datetime] = None
+    # Contacto del supervisor a cargo, resuelto por `supervisores_service` (las vistas de
+    # Lab 001 sólo traen su NOMBRE). Ambos pueden venir null: hay gente sin supervisor
+    # asignado y supervisores sin teléfono cargado — la UI los agrupa igual, sin el botón
+    # de WhatsApp, para que se vea a quiénes falta resolverles el dato.
+    id_persona_supervisor: Optional[int] = None
+    supervisor_telefono: Optional[str] = None
     ultima_llamada: Optional[UltimaLlamadaOut] = None
 
 

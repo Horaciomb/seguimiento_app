@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from .disponibilidad_service import ETIQUETA_SIN_DATO, disponibilidades_por_empleado
 from .llamadas_service import ultimas_llamadas_por_empleado
+from .supervisores_service import SUPERVISOR_VACIO, datos_supervisor_por_empleado
 
 # Sólo para Reincidencia: ese indicador nació para detectar el HÁBITO de cargar fuera de
 # horario (operador `>`), así que sigue mirando NOCHE/MADRUGADA — mismo criterio que
@@ -36,18 +37,24 @@ _DISPONIBILIDAD_VACIA = {
 }
 
 
-def _enriquecer_con_ultima_llamada(db: Session, filas: list[dict]) -> list[dict]:
-    """Agrega, por fila, la última llamada registrada y la disponibilidad de la persona.
+def _enriquecer_filas(db: Session, filas: list[dict]) -> list[dict]:
+    """Agrega, por fila: última llamada, disponibilidad y contacto del supervisor a cargo.
 
-    Dos consultas por lista completa (no una por fila) — el mismo criterio con el que se
+    Tres consultas por lista completa (no una por fila) — el mismo criterio con el que se
     resolvió el enriquecimiento de "última llamada" desde el principio.
+
+    Ninguna de las 4 queries SQL de alerta se toca para esto: el dato del supervisor se
+    agrega acá, no en el SELECT, así los criterios de negocio de Lab 001 quedan intactos y
+    la cantidad de filas de cada lista no puede cambiar por un JOIN nuevo.
     """
     ids = [f["id_empleado"] for f in filas]
     ultimas = ultimas_llamadas_por_empleado(db, ids)
     disponibilidades = disponibilidades_por_empleado(db, ids)
+    supervisores = datos_supervisor_por_empleado(db, ids)
     for f in filas:
         f["ultima_llamada"] = ultimas.get(f["id_empleado"])
         f.update(disponibilidades.get(f["id_empleado"], _DISPONIBILIDAD_VACIA))
+        f.update(supervisores.get(f["id_empleado"], SUPERVISOR_VACIO))
     return filas
 
 
@@ -66,7 +73,7 @@ _INACTIVIDAD_SQL = text(
 
 def get_inactividad(db: Session) -> list[dict]:
     filas = [dict(f) for f in db.execute(_INACTIVIDAD_SQL).mappings().all()]
-    return _enriquecer_con_ultima_llamada(db, filas)
+    return _enriquecer_filas(db, filas)
 
 
 _TURNOS_SQL = text(
@@ -102,7 +109,7 @@ def get_turnos(db: Session) -> list[dict]:
     Lab 001 no siempre cierra los 4 el mismo día.
     """
     filas = [dict(f) for f in db.execute(_TURNOS_SQL).mappings().all()]
-    return _enriquecer_con_ultima_llamada(db, filas)
+    return _enriquecer_filas(db, filas)
 
 
 _REINCIDENCIA_SQL = text(
@@ -155,7 +162,7 @@ def get_reincidencia(db: Session, dias: int = 30, minimo_veces: int = 3) -> list
 
     resultado = [r for r in resumen.values() if r["veces_en_alerta"] >= minimo_veces]
     resultado.sort(key=lambda r: (r["unidad_negocio"] or "", -r["veces_en_alerta"], r["supervisor"] or ""))
-    return _enriquecer_con_ultima_llamada(db, resultado)
+    return _enriquecer_filas(db, resultado)
 
 
 _PRODUCCION_MTD_SQL = text(
@@ -216,4 +223,4 @@ def get_produccion_mtd(db: Session) -> list[dict]:
                 "accion_sugerida": _accion_sugerida(cumplimiento_pct),
             }
         )
-    return _enriquecer_con_ultima_llamada(db, filas)
+    return _enriquecer_filas(db, filas)
