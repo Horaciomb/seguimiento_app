@@ -7,26 +7,7 @@ import {
 import { fmtFechaHora } from '@/lib/format'
 import { armarLinkWhatsapp } from '@/lib/whatsapp'
 import { DISPONIBILIDAD_VARIANT, ORIGEN_LABEL } from '@/lib/disponibilidad'
-
-const RESULTADO_LABEL = {
-  CONTESTO: 'Contestó',
-  NO_CONTESTO: 'No contestó',
-  NUMERO_INCORRECTO: 'Núm. incorrecto',
-  COMPROMISO: 'Compromiso',
-  RESUELTO: 'Resuelto',
-  ESCALADO: 'Escalado',
-  OTRO: 'Otro',
-}
-
-const RESULTADO_VARIANT = {
-  CONTESTO: 'default',
-  RESUELTO: 'default',
-  NO_CONTESTO: 'amber',
-  NUMERO_INCORRECTO: 'rose',
-  ESCALADO: 'rose',
-  COMPROMISO: 'amber',
-  OTRO: 'secondary',
-}
+import { RESULTADO_LABEL_CORTO, RESULTADO_VARIANT } from '@/lib/contacto'
 
 const MOTIVO_LABEL = {
   SALUD: 'Salud',
@@ -65,7 +46,7 @@ function CeldaUltimoContacto({ ultima }) {
     <div className="space-y-0.5">
       <div className="flex items-center gap-1 flex-wrap">
         <Badge variant={RESULTADO_VARIANT[ultima.resultado] ?? 'secondary'}>
-          {RESULTADO_LABEL[ultima.resultado] ?? ultima.resultado}
+          {RESULTADO_LABEL_CORTO[ultima.resultado] ?? ultima.resultado}
         </Badge>
         {ultima.medio_contacto === 'WHATSAPP' && (
           <MessageCircle className="h-3 w-3 text-green-600 shrink-0" />

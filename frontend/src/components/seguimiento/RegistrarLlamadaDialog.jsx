@@ -6,22 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import SelectField from '@/components/ui/select-field'
 import { DISPONIBILIDADES } from '@/lib/disponibilidad'
-
-const RESULTADOS = [
-  { value: 'CONTESTO', label: 'Contestó' },
-  { value: 'NO_CONTESTO', label: 'No contestó' },
-  { value: 'NUMERO_INCORRECTO', label: 'Número incorrecto' },
-  { value: 'COMPROMISO', label: 'Compromiso de mejora' },
-  { value: 'RESUELTO', label: 'Resuelto' },
-  { value: 'ESCALADO', label: 'Escalado / revisar con RRHH' },
-  { value: 'OTRO', label: 'Otro' },
-]
-
-const MEDIOS = [
-  { value: 'WHATSAPP', label: 'WhatsApp' },
-  { value: 'LLAMADA', label: 'Llamada' },
-  { value: 'OTRO', label: 'Otro' },
-]
+import { RESULTADOS, MEDIOS } from '@/lib/contacto'
 
 // El motivo es la información que esta app existe para recopilar: por qué el afiliador
 // dice que bajó su rendimiento. Categorizado (con "Otro" de escape) para poder reportar

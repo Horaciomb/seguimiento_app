@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { getHistorial } from '@/api/llamadas'
 import { fmtFechaHora } from '@/lib/format'
+import { RESULTADO_LABEL, RESULTADO_VARIANT, FUENTE_LABEL } from '@/lib/contacto'
 
 const MOTIVO_LABEL = {
   SALUD: 'Salud',
@@ -17,33 +18,6 @@ const MOTIVO_LABEL = {
 }
 
 const MEDIO_ICON = { WHATSAPP: MessageCircle, LLAMADA: PhoneCall }
-
-const RESULTADO_LABEL = {
-  CONTESTO: 'Contestó',
-  NO_CONTESTO: 'No contestó',
-  NUMERO_INCORRECTO: 'Número incorrecto',
-  COMPROMISO: 'Compromiso de mejora',
-  RESUELTO: 'Resuelto',
-  ESCALADO: 'Escalado',
-  OTRO: 'Otro',
-}
-
-const RESULTADO_VARIANT = {
-  CONTESTO: 'default',
-  RESUELTO: 'default',
-  NO_CONTESTO: 'amber',
-  NUMERO_INCORRECTO: 'rose',
-  ESCALADO: 'rose',
-  COMPROMISO: 'amber',
-  OTRO: 'secondary',
-}
-
-const FUENTE_LABEL = {
-  INACTIVIDAD: 'Inactividad',
-  TURNOS: 'Turnos',
-  REINCIDENCIA: 'Reincidencia',
-  PRODUCCION_MTD: 'Producción MTD',
-}
 
 export default function HistorialLlamadasDialog({ empleado, onClose }) {
   const { data, isLoading } = useQuery({
