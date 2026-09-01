@@ -1,0 +1,3 @@
+# Los scripts de las skills se ejecutan con bash (Git Bash en Windows): con CRLF
+# fallan. Se guardan y se sacan siempre con LF, sin importar core.autocrlf.
+.agents/skills/**/*.sh text eol=lf
