@@ -91,14 +91,17 @@ export default function SeguimientoPage() {
   const turnos = useAlertaListState({
     queryKey: ['alertas', 'turnos'],
     queryFn: () => getTurnos().then((r) => r.data),
+    camposFiltro: ['unidad_negocio', 'supervisor', 'turno'],
   })
   const reincidencia = useAlertaListState({
     queryKey: ['alertas', 'reincidencia'],
     queryFn: () => getReincidencia().then((r) => r.data),
+    camposFiltro: ['unidad_negocio', 'supervisor'],
   })
   const produccionMtd = useAlertaListState({
     queryKey: ['alertas', 'produccion-mtd'],
     queryFn: () => getProduccionMtd().then((r) => r.data),
+    camposFiltro: ['unidad_negocio', 'supervisor', 'accion_sugerida'],
   })
 
   return (
@@ -130,6 +133,12 @@ export default function SeguimientoPage() {
               { header: 'Tramo', cell: (r) => <Badge variant={TRAMO_VARIANT[r.tramo] ?? 'secondary'}>{r.tramo}</Badge> },
               { header: 'Días inactivo', cell: (r) => r.dias_inactividad },
               { header: 'Última afiliación', sortKey: 'fecha_ultima_afiliacion', cell: (r) => fmtFechaCorta(r.fecha_ultima_afiliacion) },
+              {
+                header: 'Foto calculada',
+                cell: (r) => r.horas_desde_el_calculo == null
+                  ? '—'
+                  : `Hace ${Math.round(r.horas_desde_el_calculo)} h`,
+              },
             ]}
           />
         </TabsContent>
@@ -140,6 +149,11 @@ export default function SeguimientoPage() {
             descripcion="Carga fuera de horario en el último cálculo de NOCHE y MADRUGADA."
             fuente="TURNOS"
             estado={turnos}
+            filtroCampos={[
+              { campo: 'unidad_negocio', label: 'Unidad' },
+              { campo: 'supervisor', label: 'Supervisor' },
+              { campo: 'turno', label: 'Turno' },
+            ]}
             columns={[
               { header: 'Turno', cell: (r) => r.turno },
               { header: 'Cantidad', cell: (r) => r.cantidad },
@@ -155,6 +169,10 @@ export default function SeguimientoPage() {
             descripcion="Quiénes repitieron la alerta de turno 3 o más veces en los últimos 30 días."
             fuente="REINCIDENCIA"
             estado={reincidencia}
+            filtroCampos={[
+              { campo: 'unidad_negocio', label: 'Unidad' },
+              { campo: 'supervisor', label: 'Supervisor' },
+            ]}
             columns={[
               { header: 'Veces en alerta', cell: (r) => r.veces_en_alerta },
               { header: 'Primera fecha', cell: (r) => fmtFechaCorta(r.primera_fecha) },
@@ -169,6 +187,11 @@ export default function SeguimientoPage() {
             descripcion="Producción del mes en curso por debajo de su propio promedio histórico."
             fuente="PRODUCCION_MTD"
             estado={produccionMtd}
+            filtroCampos={[
+              { campo: 'unidad_negocio', label: 'Unidad' },
+              { campo: 'supervisor', label: 'Supervisor' },
+              { campo: 'accion_sugerida', label: 'Acción sugerida' },
+            ]}
             columns={[
               { header: 'Producción', cell: (r) => r.produccion_actual_mtd },
               { header: 'Esperado', cell: (r) => r.promedio_historico_mtd.toFixed(1) },
