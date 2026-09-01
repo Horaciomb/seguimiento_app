@@ -7,7 +7,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import TablaAlertas from '@/components/seguimiento/TablaAlertas'
 import RegistrarLlamadaDialog from '@/components/seguimiento/RegistrarLlamadaDialog'
 import HistorialLlamadasDialog from '@/components/seguimiento/HistorialLlamadasDialog'
+import TablaSupervisores from '@/components/seguimiento/TablaSupervisores'
+import RegistrarContactoSupervisorDialog from '@/components/seguimiento/RegistrarContactoSupervisorDialog'
+import HistorialContactoSupervisorDialog from '@/components/seguimiento/HistorialContactoSupervisorDialog'
 import { useAlertaListState } from '@/hooks/useAlertaListState'
+import { useSupervisoresState, FUENTES_SUPERVISOR } from '@/hooks/useSupervisoresState'
 import { getInactividad, getTurnos, getReincidencia, getProduccionMtd } from '@/api/alertas'
 import { fmtFechaCorta } from '@/lib/format'
 
@@ -88,6 +92,98 @@ function Panel({ titulo, descripcion, fuente, estado, columns, filtroCampos }) {
   )
 }
 
+/**
+ * La misma alerta, pero vista por líder a cargo: para hacerle el llamado de atención al
+ * supervisor por la gente de su equipo que no está saliendo, en vez de perseguir uno por
+ * uno a los afiliadores.
+ *
+ * Un indicador a la vez (el selector), porque el mensaje que se le manda lleva la lista
+ * de esa alerta concreta. Los filtros son los del indicador elegido y son PROPIOS de esta
+ * pestaña: sirven para acotar el mensaje ("tu gente de TARDE") sin tocar lo que se está
+ * mirando en las otras 4.
+ */
+function PanelSupervisores() {
+  const s = useSupervisoresState()
+  const { lista } = s
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h2 className="text-lg font-semibold">Supervisores</h2>
+        <p className="text-sm text-muted-foreground">
+          Cuánta gente de cada equipo está en alerta del indicador elegido. El contador y la lista
+          cambian con el selector. Desplegá un supervisor para ver a los suyos.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <SelectField
+            value={s.fuenteId}
+            onValueChange={s.setFuenteId}
+            items={FUENTES_SUPERVISOR.map((f) => ({ value: f.id, label: `Indicador: ${f.label}` }))}
+            triggerClassName="w-full sm:w-56"
+          />
+          {s.fuente.filtroCampos.map(({ campo, label }) => (
+            <SelectField
+              key={campo}
+              value={lista.filtros[campo] || TODOS}
+              onValueChange={(v) => lista.setFiltro(campo, v === TODOS ? '' : v)}
+              items={[
+                { value: TODOS, label: `${label}: todos` },
+                ...lista.opcionesFiltro[campo].map((v) => ({ value: v, label: v })),
+              ]}
+              triggerClassName="w-full sm:w-48"
+            />
+          ))}
+        </div>
+        <Input
+          value={s.qSupervisor}
+          onChange={(e) => s.setQSupervisor(e.target.value)}
+          placeholder="Buscar supervisor por nombre…"
+          className="w-full sm:max-w-sm"
+        />
+      </div>
+
+      {lista.isError ? (
+        <EstadoLista isError error={lista.error} onRetry={lista.refetch} />
+      ) : lista.isLoading ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">Cargando…</p>
+      ) : (
+        <>
+          <TablaSupervisores
+            grupos={s.grupos}
+            fuenteId={s.fuenteId}
+            etiquetaFuente={s.fuente.label}
+            ultimoPorSupervisor={s.ultimoPorSupervisor}
+            onRegistrar={s.setContactoGrupo}
+            onVerHistorial={s.setHistorialSupervisor}
+          />
+          <PaginationBar
+            page={s.page}
+            pageSize={s.pageSize}
+            total={s.totalGrupos}
+            onPageChange={s.setPage}
+          />
+        </>
+      )}
+
+      <RegistrarContactoSupervisorDialog
+        grupo={s.contactoGrupo}
+        fuenteId={s.fuenteId}
+        etiquetaFuente={s.fuente.label}
+        onClose={() => s.setContactoGrupo(null)}
+        mutation={s.contactoMut}
+      />
+      <HistorialContactoSupervisorDialog
+        grupo={s.historialSupervisor}
+        onClose={() => s.setHistorialSupervisor(null)}
+      />
+    </div>
+  )
+}
+
+
 export default function SeguimientoPage() {
   const inactividad = useAlertaListState({
     queryKey: ['alertas', 'inactividad'],
@@ -125,6 +221,7 @@ export default function SeguimientoPage() {
             <TabsTrigger value="turnos">Turnos ({turnos.total || '…'})</TabsTrigger>
             <TabsTrigger value="reincidencia">Reincidencia ({reincidencia.total || '…'})</TabsTrigger>
             <TabsTrigger value="produccion-mtd">Producción MTD ({produccionMtd.total || '…'})</TabsTrigger>
+            <TabsTrigger value="supervisores">Supervisores</TabsTrigger>
           </TabsList>
         </div>
 
@@ -213,6 +310,10 @@ export default function SeguimientoPage() {
               { header: 'Acción sugerida', cell: (r) => r.accion_sugerida },
             ]}
           />
+        </TabsContent>
+
+        <TabsContent value="supervisores" className="pt-3">
+          <PanelSupervisores />
         </TabsContent>
       </Tabs>
     </div>

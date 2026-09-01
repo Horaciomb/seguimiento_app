@@ -100,7 +100,10 @@ export function useAlertaListState({ queryKey, queryFn, filtrarTexto = TEXTO_DEF
     filtros, setFiltro, opcionesFiltro,
     sort, onSortChange,
     page, setPage, pageSize: PAGE_SIZE,
-    items, total,
+    // `items` es la página de 25; `filtradas` es la lista completa ya filtrada y ordenada.
+    // La necesita la pestaña de Supervisores, que agrupa por líder a cargo: agrupar sobre
+    // `items` daría grupos parciales (los de la página actual), no el equipo real.
+    items, filtradas, total,
     isLoading, isError, error, refetch,
     llamadaFila, setLlamadaFila,
     historialEmpleado, setHistorialEmpleado,
