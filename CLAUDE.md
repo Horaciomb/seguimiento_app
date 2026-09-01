@@ -248,6 +248,42 @@ Verificado end-to-end contra `rrhh_bd_dev` vía HTTP: las 4 rutas devuelven la d
 esperada, un `POST /llamadas` con `disponibilidad` la deja `REGISTRADA`, y un `POST`
 posterior **sin** ese campo no la pisa. Las filas de prueba se borraron.
 
+### Por qué el 79% queda en "Sin dato" (diagnosticado contra prod, 2026-09-01)
+
+Pregunta del usuario al ver la app desplegada. **No es un bug de la app ni un cruce mal
+hecho** — es de dónde nace el dato. Diagnóstico sobre `rrhh_bd` (449 afiliadores activos):
+
+| | Cuántos |
+|---|---|
+| Tienen dato en `empleado_unidad.disponibilidad_tiempo` | 8 |
+| Tienen dato heredado de `proceso_reclutamiento` | 87 |
+| **Sin ningún proceso de reclutamiento → sin dato posible** | **354 (79%)** |
+
+El formulario de reclutamiento **funciona perfecto**: 2.502 procesos en 2026, los 2.502 con
+`disponibilidad_tiempo` cargada. El problema es que la mayoría de los afiliadores activos
+nunca lo llenó.
+
+- **Descartado que sea un problema de join o de personas duplicadas**: se buscó, para esos
+  354, si existía un proceso a nombre del **mismo CI** con otro `id_persona` → **0
+  recuperables**. Realmente no tienen proceso. (Por eso tampoco sirve cambiar el join a CI.)
+- **La causa está en `fecha_creacion`: 292 de los 354 se crearon el mismo día, el
+  2026-07-20** — la carga masiva de la nómina que ya trabajaba cuando se puso en marcha el
+  sistema. Entraron directo a `empleado_unidad` sin pasar por el módulo de reclutamiento
+  porque ya estaban contratados; para ellos el dato **nunca pudo existir**.
+- Los ~62 restantes son altas posteriores que tampoco pasaron por el módulo, pero **eso
+  mejora mes a mes**: de las altas de 2026-01, 3 de 19 entraron por reclutamiento; de las de
+  2026-08, 24 de 54 (16% → 44%). El hueco se cierra solo para la gente nueva; los 292 de la
+  carga inicial no.
+
+**Decisión del usuario (2026-09-01): no agregar todavía una edición directa de la
+disponibilidad.** Se evaluó un `PUT /disponibilidad` con un select editable en la fila —para
+cargar en lote lo que los supervisores ya saben, sin fingir un contacto— y se prefirió que
+se vaya llenando sola a través del formulario de "Registrar contacto", así cada dato queda
+respaldado por una conversación real. El filtro "Sin dato" existe justamente para ir
+encontrando a quiénes falta preguntarles. La otra vía posible, si algún día urge, es que
+RRHH/Lab 001 llenen `empleado_unidad.disponibilidad_tiempo` en el origen: esta app ya la lee
+**con prioridad sobre reclutamiento**, así que aparecería sola sin tocar código.
+
 ## Los 4 turnos en la pestaña de Turnos (2026-09-01)
 
 Pregunta del usuario: *"¿por qué no veo a los que no subieron más de 5 personas en la
