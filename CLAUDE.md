@@ -328,11 +328,16 @@ que hay que crearlas a mano con DDL. Tres migraciones, todas en `backend/migrati
   `bex_app` (`SELECT`/`INSERT`/`UPDATE`, más el `DELETE` heredado del esquema como en la 001)
   y 0 filas. Re-corrida a continuación para confirmar que el no-op es limpio.
 
-⚠️ **La 003 está en prod pero el código que la usa TODAVÍA NO está desplegado ahí**
-(2026-09-01): la tabla existe y vacía, pero la columna y el filtro de Disponibilidad no se
-ven aún en `https://srv.beneficioslatam.com/rrhh/seguimiento/`. Ese orden es el correcto y
-seguro (la tabla es aditiva, la app que hoy corre en prod ni la lee), pero **falta el deploy**
-— ver §Despliegue. Ojo: `deploy-backend.ps1` aborta si `backend/app` está sucio.
+✅ **Desplegado a prod el 2026-09-01, después de la migración** (ese es el orden seguro: la
+tabla primero, el código que la lee después). Verificado contra la URL pública con
+`Cache-Control: no-cache`: `/api/health` → `ok` / `database conectado`; las 4 rutas de alerta
+devuelven las 5 claves `disponibilidad*`; el bundle servido (`index-vd-KJDl1.js`, el recién
+construido) contiene `Disponibilidad`, `TURNO_MANANA` y `de reclutamiento`.
+
+**Cobertura real en prod** (mejor que en dev, ~23%): de 779 filas de Turnos, 176 traen
+disponibilidad heredada de reclutamiento (87 tiempo completo, 42 turno tarde, 34 turno
+mañana, 7 medio tiempo, 6 no definido) y 603 quedan en "Sin dato" — que es justamente a
+quienes hay que preguntarles, y el filtro los aísla.
 
 **Cómo se aplicaron la 001 y la 002 (mecanismo, no manual — quedó en el historial de la
 sesión, sin script versionado):** un script Python puntual con `psycopg2`, conectando
