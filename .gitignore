@@ -1,2 +1,12 @@
 # Preferencias locales de Claude Code (permisos por máquina, no del proyecto)
 .claude/settings.local.json
+
+# Sesiones del visual companion de la skill brainstorming: contenido HTML efimero,
+# logs y .last-token (un token de sesion). Lo pide la propia doc de la skill.
+.superpowers/
+
+# Enlaces locales que crea `npx skills add` en .claude/skills/ apuntando a
+# .agents/skills/ con ruta absoluta de esta maquina: no sirven en otra.
+# El contenido real de la skill si esta versionado, en .agents/skills/.
+/.claude/skills/brainstorming
+/.claude/skills/writing-plans
