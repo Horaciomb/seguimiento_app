@@ -34,8 +34,9 @@ de diseño que se heredó tal cual (pool de conexiones, keepalives TCP, `ORJSONR
 
 ```
 backend/   FastAPI + SQLAlchemy 2.0, SIN auth. app/{config,database,models,schemas}.py,
-           app/services/{alertas_service,llamadas_service}.py,
-           app/routers/{alertas,llamadas}.py
+           app/services/{alertas_service,llamadas_service,disponibilidad_service,
+           supervisores_service,contactos_supervisor_service}.py,
+           app/routers/{alertas,llamadas,supervisores}.py
 frontend/  React 19 + Vite + Tailwind v4 + TanStack Query, SIN login/router.
            Componentes de ui/ copiados de rrhh-app/frontend (mismo look & feel, mismo
            patrón página+hook que VetadosPage.jsx/useVetadosState.js).
@@ -51,6 +52,9 @@ frontend/  React 19 + Vite + Tailwind v4 + TanStack Query, SIN login/router.
 | `GET /alertas/produccion-mtd` | Los 4 filtros de `18b_exportar_produccion_mtd.py`: MEDIDO, promedio≥10, actual≤promedio, excluir a quien ya está en alerta de Inactividad o de Turnos (NOCHE/MADRUGADA, último cálculo) |
 | `POST /llamadas` | Inserta en `seguimiento_llamada` |
 | `GET /llamadas/historial/{id_empleado}` | Historial completo de esa persona, todas las fuentes |
+| `POST /contactos-supervisor` | Registra el llamado de atención al supervisor (ver §Contacto al supervisor) |
+| `GET /contactos-supervisor/ultimos` | Último contacto de cada supervisor, opcionalmente acotado por `fuente` |
+| `GET /contactos-supervisor/historial/{id_persona_supervisor}` | Historial completo de ese supervisor |
 
 Cada fila de los 4 GET de alertas se enriquece con la última `seguimiento_llamada` de ese
 empleado (`services/llamadas_service.ultimas_llamadas_por_empleado`), para que la UI pinte
@@ -334,6 +338,136 @@ Verificado contra `rrhh_bd_dev` llamando a los 4 servicios: turnos pasa de 6 a *
 **inactividad (119), reincidencia (32) y producción MTD (105) quedan idénticos**, que era el
 punto. `npm run build` compila.
 
+## Contacto al supervisor: la alerta agrupada por líder a cargo (2026-09-01)
+
+Pedido del usuario: que el llamado de atención vaya **al supervisor / líder a cargo**, no
+sólo al afiliador — "podemos agruparlos por supervisor y que así sea como se vea, y el
+mensaje debería pasar la info de cada supervisor por sus afiliadores que no están saliendo".
+
+Decisiones tomadas con el usuario antes de escribir código: **una 5ta pestaña
+"Supervisores"** (las 4 existentes quedan intactas, siguen sirviendo para hablar con la
+persona); el mensaje lleva la lista **del indicador seleccionado**, uno a la vez; el
+contacto se registra en una **tabla nueva, una fila por contacto** (no por afiliador); y
+los afiliadores sin supervisor asignado se muestran igual, agrupados aparte.
+
+### El teléfono del supervisor: se resuelve sin tocar Lab 001
+
+Las 3 vistas exponen `supervisor` **sólo como texto** (el nombre armado con `CONCAT_WS`),
+ni el id ni el teléfono. Pero el camino existe y la app lo recorre sola:
+
+`empleado_unidad.id_empleado` → `eu.id_persona_supervisor` → `persona.teléfono`
+
+Se usa `persona.teléfono` y no la fila `empleado_unidad` del propio supervisor por dos
+razones medidas: cubre más (108 vs. 104 en dev sobre Inactividad) y `persona` es una fila
+por `id_persona`, mientras que `empleado_unidad` tiene 4 personas con más de una fila
+activa. **El nombre que muestra la vista sale de esa misma fila de `persona`** (las 3
+vistas hacen `LEFT JOIN persona sup ON sup.id_persona = eu.id_persona_supervisor`), así que
+no hay riesgo de escribirle a uno mientras la pantalla dice otro, y no hace falta traer el
+nombre de nuevo.
+
+Cobertura verificada el 2026-09-01: en `rrhh_bd` (prod) 423 de 449 activos tienen supervisor
+y 384 de 405 filas de Turnos resuelven teléfono; en `rrhh_bd_dev`, 109/119 y 108/119.
+
+- **`backend/app/services/supervisores_service.py`**: `datos_supervisor_por_empleado()`,
+  **una consulta por lista** (mismo criterio que última llamada y disponibilidad).
+- **`_enriquecer_con_ultima_llamada` pasó a llamarse `_enriquecer_filas`** — ya hacía dos
+  cosas y ahora hace tres.
+- ⚠ **Ninguna de las 4 queries SQL de alerta se tocó**: el dato se agrega en el
+  enriquecimiento, no en el `SELECT`. Por eso los criterios de Lab 001 quedan intactos y la
+  cantidad de filas no puede cambiar por un JOIN nuevo (verificado: 119 / 693 / 32 / 105,
+  idénticos al baseline).
+
+### `seguimiento_contacto_supervisor` (migración 004)
+
+Tabla propia, aplicada en `rrhh_bd_dev` el 2026-09-01 con `aplicar_migracion.py`.
+**Todavía NO aplicada en `rrhh_bd` (prod)** — falta la confirmación explícita del usuario,
+igual que con las 3 anteriores.
+
+- **Una fila por contacto, no por afiliador**: un mensaje habla de N personas a la vez.
+  Meter una fila por afiliador en `seguimiento_llamada` habría llenado el historial de cada
+  persona con contactos que nunca fueron a ella.
+- **`afiliadores` es JSONB, no un `BIGINT[]` de ids**: con sólo ids, dentro de una semana el
+  historial no puede reconstruir el mensaje — la métrica que lo motivaba ("45 días sin
+  afiliar") ya no existe en ninguna vista, porque la alerta se recalcula todos los días. Se
+  guarda `[{id_empleado, nombre, metrica}]`, mismo criterio que `snapshot_metrica`.
+  `cantidad_afiliadores` la **deriva el backend** con `len(afiliadores)`, no llega del
+  cliente: son dos vistas del mismo hecho y no tiene sentido que se desincronicen.
+- **`id_persona_supervisor` va sin FK**, a diferencia del `REFERENCES empleado_unidad(...)`
+  de las migraciones 001 y 003. Lab 001 la declara como referencia blanda y su propia
+  validación *cuenta* los huérfanos como métrica esperada; con una FK, registrar un contacto
+  a un supervisor huérfano fallaría con un 500 justo al usarlo. Hoy no hay ninguno
+  (verificado en dev y prod), pero el origen permite que aparezcan, y `supervisor_nombre`
+  desnormalizado cubre la trazabilidad.
+- Endpoints (`routers/supervisores.py`): `POST /contactos-supervisor`,
+  `GET /contactos-supervisor/ultimos?fuente=...` (el último de cada supervisor en una sola
+  consulta, acotado al indicador — "ya le escribí por su gente de Turnos" no contesta
+  "¿le escribí por sus inactivos?") y
+  `GET /contactos-supervisor/historial/{id_persona_supervisor}`.
+
+### Frontend
+
+- **`lib/supervisores.js`**: `agruparPorSupervisor()` agrupa por `id_persona_supervisor` y
+  **no por el nombre** (dos homónimos colapsarían y se le mandaría a uno la gente del otro).
+  Orden: el que más gente en alerta tiene primero; el grupo sin líder **siempre ultimo**,
+  porque no es una lista de trabajo sino el pendiente de asignarle supervisor a esa gente en
+  Lab 001. `metricaDeFila()` formatea la métrica de cada indicador como texto — se congela
+  así en el snapshot.
+- **`lib/whatsapp.js` `armarLinkWhatsappSupervisor()`**: a diferencia del mensaje al
+  afiliador (un saludo corto a propósito), este sí lleva contenido. Corta por **dos**
+  condiciones (12 nombres **y** 1200 caracteres ya encodeados), porque cada una falla sola:
+  12 nombres cortos entran, 12 con métrica larga no. En Turnos el corte se va a notar
+  (~700 filas sobre ~40 supervisores ≈ 17 por cabeza) — por eso la pestaña tiene filtros
+  propios: el mensaje accionable sale de filtrar, no de mandar la lista entera.
+- **`components/ui/accordion.jsx`**: wrapper de `@base-ui/react/accordion`, mismo patrón que
+  `tabs.jsx`/`dialog.jsx`. Se usó la primitiva y no un `useState` a mano por lo que trae
+  gratis: `aria-expanded`, `role="region"`, navegación con flechas y
+  `--accordion-panel-height` para animar sin medir.
+- **`hooks/useSupervisoresState.js`**: monta **su propia instancia** de `useAlertaListState`,
+  no reusa las 4 de las otras pestañas — compartirlas haría que un filtro puesto en la
+  pestaña de Turnos apareciera aplicado acá sin que nadie lo tocara. No cuesta una consulta
+  extra: TanStack Query dedupea por `queryKey` y las 4 ya están en caché. Agrupa sobre
+  `filtradas` (la lista completa, agregada al retorno del hook) y no sobre `items` (la
+  página de 25), que daría equipos parciales.
+- **`lib/contacto.js`**: `RESULTADO_LABEL`/`_VARIANT`/`RESULTADOS`/`MEDIOS`/`FUENTE_LABEL`,
+  que estaban **triplicados** entre `TablaAlertas`, `RegistrarLlamadaDialog` e
+  `HistorialLlamadasDialog`; con los dos diálogos nuevos habrían sido cinco copias.
+- **Tres estados distintos en la cabecera del grupo**, que no hay que confundir:
+
+  | Caso | WhatsApp | Registrar / Historial |
+  |---|---|---|
+  | Sin `id_persona_supervisor` | ✗ | ✗ — grupo de sólo lectura, "hay que asignarle líder" |
+  | Con id, sin teléfono | ✗ (deshabilitado) | ✓ (se registra igual, por llamada) |
+  | Con id y teléfono | ✓ | ✓ |
+
+- El diálogo de registro **no tiene** `disponibilidad` ni `motivo_bajo_rendimiento`: los dos
+  son datos del afiliador, y meter acá el motivo que supone el supervisor ensuciaría el
+  reporte de "cuántos se van por X motivo".
+
+### Verificado el 2026-09-01
+
+Contra `rrhh_bd_dev`: las 4 rutas devuelven `id_persona_supervisor`/`supervisor_telefono`
+con **la misma cantidad de filas que antes**; `POST /contactos-supervisor` por HTTP real
+deriva `cantidad_afiliadores` sin que el cliente lo mande, el JSONB va y vuelve intacto, y
+`?fuente=` acota (1 en INACTIVIDAD, 0 en TURNOS). Filas de prueba borradas.
+
+El render se verificó con **SSR sobre los datos reales de la API** (`renderToStaticMarkup`,
+mismo recurso que se usó para el `render` prop del Button): 119 filas → 34 grupos, la suma
+por grupo da exactamente 119 (no se pierde ni duplica nadie), el grupo sin líder queda
+último, el mensaje de WhatsApp sale con nombres y métricas reales, el botón queda
+deshabilitado en el supervisor sin teléfono y el grupo sin líder no tiene botones.
+`npm run build` compila.
+
+⚠ **Sigue sin haber un recorrido visual en navegador**: la automatización de Chrome de esta
+sesión llega a `example.com` pero da página de error en `localhost` y `127.0.0.1` (mismo
+bloqueo de las dos sesiones anteriores). Falta un recorrido manual, sobre todo del acordeón
+en teléfono.
+
+⚠ **Ojo con los servidores viejos al probar**: había un uvicorn de una sesión anterior
+escuchando en el 8010 (arrancado horas antes, con el código viejo) y el nuevo no pudo
+bindear. La primera pasada de SSR dio "1 solo grupo, sin teléfono" por eso, no por un bug —
+antes de creerle a una prueba local, verificar con `netstat -ano` + `Get-Process` qué proceso
+tiene el puerto, igual que ya dice la nota de `--reload` más arriba.
+
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
 **Qué son y por qué existen:** `seguimiento_llamada` y `seguimiento_disponibilidad` son las
@@ -348,6 +482,7 @@ que hay que crearlas a mano con DDL. Tres migraciones, todas en `backend/migrati
 | `001_create_seguimiento_llamada.sql` | Crea la tabla completa (columnas, `CHECK` en `fuente`/`resultado`, índice por `id_empleado`, `GRANT SELECT/INSERT/UPDATE` a `bex_app`) |
 | `002_add_medio_y_motivo.sql` | Agrega `medio_contacto` y `motivo_bajo_rendimiento` (ver sección de WhatsApp arriba) con sus `CHECK` de valores válidos |
 | `003_create_seguimiento_disponibilidad.sql` | Crea `seguimiento_disponibilidad` (ver sección de Disponibilidad arriba): una fila por empleado, `CHECK` de valores válidos, `GRANT` a `bex_app` |
+| `004_create_seguimiento_contacto_supervisor.sql` | Crea `seguimiento_contacto_supervisor` (ver sección de Contacto al supervisor arriba): una fila por contacto, `afiliadores` JSONB con el snapshot, 3 `CHECK`, índice por supervisor, `GRANT` a `bex_app` + la secuencia. **Aplicada en `rrhh_bd_dev` el 2026-09-01; PENDIENTE en prod** |
 
 **Cronología real:**
 - **2026-08-28** — ambas aplicadas primero en `rrhh_bd_dev`, para desarrollar y probar sin
