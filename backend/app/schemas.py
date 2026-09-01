@@ -120,3 +120,71 @@ class LlamadaOut(BaseModel):
     registrado_por: Optional[str] = None
     snapshot_metrica: Optional[dict[str, Any]] = None
     created_at: datetime
+
+
+# --- Contacto al supervisor a cargo (migración 004) ---------------------------------
+#
+# El sujeto es el supervisor, no el afiliador: un contacto habla de N personas a la vez.
+# Por eso `afiliadores` (el snapshot de la lista) en vez de un `id_empleado`.
+
+
+class AfiliadorSnapshot(BaseModel):
+    """Un afiliador tal como se lo mencionó en el contacto, congelado."""
+
+    id_empleado: int
+    nombre: Optional[str] = None
+    # La métrica del indicador ya formateada ("45 días sin afiliar", "3 en TARDE, umbral < 5"):
+    # dentro de una semana ese número ya no existe en ninguna vista.
+    metrica: Optional[str] = None
+
+
+class ContactoSupervisorIn(BaseModel):
+    id_persona_supervisor: int
+    supervisor_nombre: Optional[str] = None
+    fuente: Literal["INACTIVIDAD", "TURNOS", "REINCIDENCIA", "PRODUCCION_MTD"]
+    resultado: Literal[
+        "CONTESTO", "NO_CONTESTO", "NUMERO_INCORRECTO", "COMPROMISO", "RESUELTO", "ESCALADO", "OTRO"
+    ]
+    medio_contacto: Literal["LLAMADA", "WHATSAPP", "OTRO"] = "WHATSAPP"
+    # De quiénes se habló, congelado. `cantidad_afiliadores` NO llega del cliente: la
+    # calcula el servicio con len(afiliadores), para que no puedan desincronizarse.
+    afiliadores: list[AfiliadorSnapshot] = []
+    proxima_accion: Optional[str] = None
+    fecha_proximo_seguimiento: Optional[date] = None
+    notas: Optional[str] = None
+    registrado_por: Optional[str] = None
+
+
+class ContactoSupervisorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    id_persona_supervisor: int
+    supervisor_nombre: Optional[str] = None
+    fuente: str
+    fecha_contacto: datetime
+    medio_contacto: str
+    resultado: str
+    cantidad_afiliadores: int
+    afiliadores: list[AfiliadorSnapshot] = []
+    proxima_accion: Optional[str] = None
+    fecha_proximo_seguimiento: Optional[date] = None
+    notas: Optional[str] = None
+    registrado_por: Optional[str] = None
+    created_at: datetime
+
+
+class UltimoContactoSupervisorOut(BaseModel):
+    """Resumen del último contacto de un supervisor, para pintar la lista agrupada."""
+
+    id: int
+    id_persona_supervisor: int
+    supervisor_nombre: Optional[str] = None
+    fuente: str
+    fecha_contacto: datetime
+    medio_contacto: str
+    resultado: str
+    cantidad_afiliadores: int
+    proxima_accion: Optional[str] = None
+    fecha_proximo_seguimiento: Optional[date] = None
+    registrado_por: Optional[str] = None

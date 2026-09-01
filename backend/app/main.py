@@ -4,7 +4,7 @@ from fastapi.responses import ORJSONResponse
 
 from .config import settings
 from .database import check_connection
-from .routers import alertas, llamadas
+from .routers import alertas, llamadas, supervisores
 
 app = FastAPI(
     title="Seguimiento de Indicadores API",
@@ -24,6 +24,7 @@ app.add_middleware(
 
 app.include_router(alertas.router)
 app.include_router(llamadas.router)
+app.include_router(supervisores.router)
 
 
 @app.get("/health", tags=["sistema"])

@@ -1,10 +1,11 @@
-from sqlalchemy import BigInteger, DateTime, Date, String, Text, func
+from sqlalchemy import BigInteger, DateTime, Date, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
 
-# Únicas tablas que esta app POSEE en rrhh_bd (seguimiento_llamada y seguimiento_disponibilidad). Todo lo demás (empleado_unidad,
+# Únicas tablas que esta app POSEE en rrhh_bd (seguimiento_llamada, seguimiento_disponibilidad
+# y seguimiento_contacto_supervisor). Todo lo demás (empleado_unidad,
 # vw_alerta_inactividad, vw_alerta_turnos, vw_produccion_mtd_vs_historico, etc.) es de
 # Lab 001 y se lee con SQL crudo en services/alertas_service.py — declarar un modelo ORM
 # para tablas que no son nuestras invitaría a "gestionarlas" desde acá por accidente.
@@ -85,3 +86,37 @@ class SeguimientoDisponibilidad(Base):
     fecha_actualizacion: Mapped["object"] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class SeguimientoContactoSupervisor(Base):
+    """Log de los contactos al supervisor a cargo, por su gente en alerta (migración 004).
+
+    Una fila por contacto, no por afiliador: un mismo mensaje habla de N personas a la vez
+    y `afiliadores` guarda el snapshot de quiénes eran y con qué métrica. Meterlo en
+    `seguimiento_llamada` habría llenado el historial de cada afiliador con contactos que
+    nunca fueron a él.
+
+    `id_persona_supervisor` sin ForeignKey por la misma razón que las otras dos tablas
+    (`persona` es de Lab 001 y no está en este MetaData) y porque en el propio Lab 001 la
+    referencia equivalente ya es blanda, sin FK.
+    """
+
+    __tablename__ = "seguimiento_contacto_supervisor"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id_persona_supervisor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    supervisor_nombre: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    fuente: Mapped[str] = mapped_column(String(20), nullable=False)
+    fecha_contacto: Mapped["object"] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    medio_contacto: Mapped[str] = mapped_column(String(20), nullable=False, server_default="WHATSAPP")
+    resultado: Mapped[str] = mapped_column(String(30), nullable=False)
+    cantidad_afiliadores: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # [{"id_empleado": …, "nombre": …, "metrica": "45 días sin afiliar"}] — congelado: la
+    # alerta de origen se recalcula todos los días y el historial tiene que seguir
+    # diciendo por qué gente se le llamó la atención. Ver migrations/004.
+    afiliadores: Mapped[list | None] = mapped_column(JSONB, nullable=False, server_default="'[]'::jsonb")
+    proxima_accion: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    fecha_proximo_seguimiento: Mapped["object"] = mapped_column(Date, nullable=True)
+    notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    registrado_por: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped["object"] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
