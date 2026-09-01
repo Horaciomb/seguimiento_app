@@ -344,10 +344,24 @@ los dos archivos tal cual están en el repo, en orden (`001` y después `002`), 
   quedaron bien. Esa fila de prueba se borró después con un DELETE puntual (mismo mecanismo:
   `bex_ingeniero` + `RRHH_PG_PASSWORD`).
 
-⚠️ **Nada de esto se corrió con un script versionado en el repo** — fue un script ad-hoc
-armado en el momento, ejecutado y descartado. Si hace falta repetir esta operación (por
-ejemplo, una migración `003` futura), conviene guardar el script real en
-`backend/migrations/aplicar_migracion.py` o similar en vez de rehacerlo desde cero cada vez.
+**Ya hay un script versionado para esto (2026-09-01):** `backend/migrations/aplicar_migracion.py`
+—  lo que CLAUDE.md venía pidiendo desde las migraciones 001/002, que se aplicaron con un
+script ad-hoc armado en el momento y descartado. Hace lo mismo que hacía aquel (leer el
+`.sql` del repo, conectar como `bex_ingeniero` con `RRHH_PG_PASSWORD`, `autocommit`) y
+además imprime solo la verificación (columnas, constraints, grants de `bex_app`, filas) de
+las tablas que ese SQL toca:
+
+```powershell
+cd backend
+$env:RRHH_PG_PASSWORD = "<la de bex_ingeniero>"
+venv\Scripts\python.exe migrations/aplicar_migracion.py 003_create_seguimiento_disponibilidad.sql          # dev
+venv\Scripts\python.exe migrations/aplicar_migracion.py 003_create_seguimiento_disponibilidad.sql --prod   # rrhh_bd
+```
+
+Sin `--prod` va a `rrhh_bd_dev`. Con `--prod` **pide escribir `APLICAR` a mano** antes de
+conectar: `rrhh_bd` es una base compartida con las otras apps de RRHH y el flag solo no
+alcanza como confirmación. Como todas las migraciones son idempotentes, volver a correr una
+ya aplicada es un no-op seguro — y es la forma de verificar en qué estado quedó una base.
 
 ## Verificado el 2026-08-28
 
