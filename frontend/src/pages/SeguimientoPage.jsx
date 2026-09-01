@@ -32,25 +32,31 @@ function Panel({ titulo, descripcion, fuente, estado, columns, filtroCampos }) {
         <p className="text-sm text-muted-foreground">{descripcion}</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      {/* En teléfono los filtros van en dos columnas a lo ancho (un select por línea es
+          demasiado alto); desde `sm` vuelven a la fila de siempre. */}
+      <div className="space-y-2">
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar por nombre, CI, teléfono o supervisor…"
-          className="max-w-sm"
+          className="w-full sm:max-w-sm"
         />
-        {filtroCampos?.map(({ campo, label }) => (
-          <SelectField
-            key={campo}
-            value={filtros[campo] || TODOS}
-            onValueChange={(v) => setFiltro(campo, v === TODOS ? '' : v)}
-            items={[
-              { value: TODOS, label: `${label}: todos` },
-              ...opcionesFiltro[campo].map((v) => ({ value: v, label: v })),
-            ]}
-            triggerClassName="w-48"
-          />
-        ))}
+        {!!filtroCampos?.length && (
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            {filtroCampos.map(({ campo, label }) => (
+              <SelectField
+                key={campo}
+                value={filtros[campo] || TODOS}
+                onValueChange={(v) => setFiltro(campo, v === TODOS ? '' : v)}
+                items={[
+                  { value: TODOS, label: `${label}: todos` },
+                  ...opcionesFiltro[campo].map((v) => ({ value: v, label: v })),
+                ]}
+                triggerClassName="w-full sm:w-48"
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {isError ? (
@@ -86,22 +92,22 @@ export default function SeguimientoPage() {
   const inactividad = useAlertaListState({
     queryKey: ['alertas', 'inactividad'],
     queryFn: () => getInactividad().then((r) => r.data),
-    camposFiltro: ['unidad_negocio', 'supervisor', 'tramo'],
+    camposFiltro: ['unidad_negocio', 'supervisor', 'tramo', 'disponibilidad_label'],
   })
   const turnos = useAlertaListState({
     queryKey: ['alertas', 'turnos'],
     queryFn: () => getTurnos().then((r) => r.data),
-    camposFiltro: ['unidad_negocio', 'supervisor', 'turno'],
+    camposFiltro: ['unidad_negocio', 'supervisor', 'turno', 'disponibilidad_label'],
   })
   const reincidencia = useAlertaListState({
     queryKey: ['alertas', 'reincidencia'],
     queryFn: () => getReincidencia().then((r) => r.data),
-    camposFiltro: ['unidad_negocio', 'supervisor'],
+    camposFiltro: ['unidad_negocio', 'supervisor', 'disponibilidad_label'],
   })
   const produccionMtd = useAlertaListState({
     queryKey: ['alertas', 'produccion-mtd'],
     queryFn: () => getProduccionMtd().then((r) => r.data),
-    camposFiltro: ['unidad_negocio', 'supervisor', 'accion_sugerida'],
+    camposFiltro: ['unidad_negocio', 'supervisor', 'accion_sugerida', 'disponibilidad_label'],
   })
 
   return (
@@ -111,12 +117,16 @@ export default function SeguimientoPage() {
       </div>
 
       <Tabs defaultValue="inactividad">
-        <TabsList>
-          <TabsTrigger value="inactividad">Inactividad ({inactividad.total || '…'})</TabsTrigger>
-          <TabsTrigger value="turnos">Turnos ({turnos.total || '…'})</TabsTrigger>
-          <TabsTrigger value="reincidencia">Reincidencia ({reincidencia.total || '…'})</TabsTrigger>
-          <TabsTrigger value="produccion-mtd">Producción MTD ({produccionMtd.total || '…'})</TabsTrigger>
-        </TabsList>
+        {/* Las 4 pestañas no entran en el ancho de un teléfono: se desplazan en horizontal,
+            sangrando el padding de la página para que se vea que hay más a la derecha. */}
+        <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+          <TabsList className="h-11 md:h-9">
+            <TabsTrigger value="inactividad">Inactividad ({inactividad.total || '…'})</TabsTrigger>
+            <TabsTrigger value="turnos">Turnos ({turnos.total || '…'})</TabsTrigger>
+            <TabsTrigger value="reincidencia">Reincidencia ({reincidencia.total || '…'})</TabsTrigger>
+            <TabsTrigger value="produccion-mtd">Producción MTD ({produccionMtd.total || '…'})</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="inactividad" className="pt-3">
           <Panel
@@ -128,6 +138,7 @@ export default function SeguimientoPage() {
               { campo: 'unidad_negocio', label: 'Unidad' },
               { campo: 'supervisor', label: 'Supervisor' },
               { campo: 'tramo', label: 'Tramo' },
+              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
             ]}
             columns={[
               { header: 'Tramo', cell: (r) => <Badge variant={TRAMO_VARIANT[r.tramo] ?? 'secondary'}>{r.tramo}</Badge> },
@@ -146,19 +157,20 @@ export default function SeguimientoPage() {
         <TabsContent value="turnos" className="pt-3">
           <Panel
             titulo="Turnos"
-            descripcion="Carga fuera de horario en el último cálculo de NOCHE y MADRUGADA."
+            descripcion="Último cálculo de cada turno en alerta: bajo rendimiento en MAÑANA/TARDE y carga fuera de horario en NOCHE/MADRUGADA. Filtrá por turno para separarlos."
             fuente="TURNOS"
             estado={turnos}
             filtroCampos={[
               { campo: 'unidad_negocio', label: 'Unidad' },
               { campo: 'supervisor', label: 'Supervisor' },
               { campo: 'turno', label: 'Turno' },
+              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
             ]}
             columns={[
               { header: 'Turno', cell: (r) => r.turno },
-              { header: 'Cantidad', cell: (r) => r.cantidad },
+              { header: 'Cantidad', sortKey: 'cantidad', cell: (r) => r.cantidad },
               { header: 'Umbral', cell: (r) => `${r.operador} ${r.umbral}` },
-              { header: 'Fecha', cell: (r) => fmtFechaCorta(r.fecha) },
+              { header: 'Fecha', sortKey: 'fecha', cell: (r) => fmtFechaCorta(r.fecha) },
             ]}
           />
         </TabsContent>
@@ -172,6 +184,7 @@ export default function SeguimientoPage() {
             filtroCampos={[
               { campo: 'unidad_negocio', label: 'Unidad' },
               { campo: 'supervisor', label: 'Supervisor' },
+              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
             ]}
             columns={[
               { header: 'Veces en alerta', cell: (r) => r.veces_en_alerta },
@@ -191,6 +204,7 @@ export default function SeguimientoPage() {
               { campo: 'unidad_negocio', label: 'Unidad' },
               { campo: 'supervisor', label: 'Supervisor' },
               { campo: 'accion_sugerida', label: 'Acción sugerida' },
+              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
             ]}
             columns={[
               { header: 'Producción', cell: (r) => r.produccion_actual_mtd },

@@ -167,6 +167,35 @@ Unidad, Supervisor y Tramo, y ordenarla por fecha de última afiliación de meno
 Todo esto es client-side (arrays ya traídos por `useQuery`) — no hay cambios de backend ni
 de query SQL para esta parte.
 
+## Vista de teléfono: una tarjeta por persona (2026-09-01)
+
+Pedido del usuario tras usar la app desde el celular: cada persona más alta, con los 3
+botones en una segunda línea, para no tener que desplazarse a la derecha a buscarlos.
+
+- **`TablaAlertas.jsx` ahora tiene dos vistas del mismo dato, elegidas por CSS** (`md:hidden`
+  / `hidden md:block`), no por `useIsMobile()` — así no parpadea en la primera pintura ni
+  depende de `matchMedia`. Debajo de `md` (768px) se renderiza una tarjeta por persona
+  (nombre + CI, datos en dos columnas, último contacto) y, separados por un `border-t`, los
+  3 botones en un `grid grid-cols-3` con `size="touch"` (44px, el mínimo táctil) y su
+  etiqueta visible: WhatsApp · Registrar · Historial. En escritorio, la tabla de siempre sin
+  cambios de layout.
+- **`Acciones` y `CeldaUltimoContacto` son componentes compartidos por las dos vistas** — no
+  hay dos copias de la lógica de los botones ni del enriquecimiento de última llamada.
+- **`BarraOrden`**: en la tarjeta no hay encabezado de tabla donde clickear, así que las
+  columnas con `sortKey` se exponen como chips arriba de la lista (mismo ciclo asc → desc →
+  sin orden). Sin esto, ordenar era imposible desde el teléfono.
+- **`SeguimientoPage.jsx`**: los filtros pasan a `grid grid-cols-2` en teléfono (un select
+  por línea era demasiado alto) y vuelven a la fila de siempre desde `sm`; la fila de
+  pestañas se desplaza en horizontal sangrando el padding de la página (`-mx-4 px-4`) porque
+  las 4 no entran en un teléfono, con `h-11` táctil.
+- Se sumó `tabular-nums` a CI, teléfono, fechas y columnas de métrica: son números que
+  cambian entre filas y al reordenar, y con dígitos proporcionales la columna "baila".
+
+⚠️ **No verificado visualmente en un navegador**: la automatización de Chrome de esta sesión
+no llega a `localhost` (carga `https://example.com` sin problema, pero `127.0.0.1:5177` da
+página de error). Sí se verificó que `npm run build` compila. Falta un recorrido real en un
+teléfono antes de darlo por cerrado.
+
 ## Disponibilidad horaria de la persona (2026-09-01)
 
 Pedido del usuario: que desde la página se sepa si una persona es de **medio tiempo, tiempo
