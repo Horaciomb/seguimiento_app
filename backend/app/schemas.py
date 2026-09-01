@@ -4,6 +4,11 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict
 
 
+Disponibilidad = Literal[
+    "TIEMPO_COMPLETO", "MEDIO_TIEMPO", "TURNO_MANANA", "TURNO_TARDE", "NO_DEFINIDO",
+]
+
+
 class UltimaLlamadaOut(BaseModel):
     """Resumen de la última llamada registrada, incrustado en cada fila de alerta."""
 
@@ -27,6 +32,13 @@ class _PersonaBase(BaseModel):
     unidad_negocio: Optional[str] = None
     campana: Optional[str] = None
     telefono: Optional[str] = None
+    # Disponibilidad horaria: código propio, etiqueta lista para mostrar/filtrar, y de
+    # dónde salió (REGISTRADA por quien llamó · RECLUTAMIENTO heredado del formulario).
+    disponibilidad: Optional[Disponibilidad] = None
+    disponibilidad_label: str = "Sin dato"
+    disponibilidad_origen: Optional[Literal["REGISTRADA", "RECLUTAMIENTO"]] = None
+    disponibilidad_registrado_por: Optional[str] = None
+    disponibilidad_actualizada: Optional[datetime] = None
     ultima_llamada: Optional[UltimaLlamadaOut] = None
 
 
@@ -75,6 +87,10 @@ class LlamadaIn(BaseModel):
     ]
     medio_contacto: Literal["LLAMADA", "WHATSAPP", "OTRO"] = "LLAMADA"
     motivo_bajo_rendimiento: Optional[MotivoBajoRendimiento] = None
+    # Opcional: si en el contacto se confirmó la disponibilidad de la persona, se guarda
+    # (upsert) en seguimiento_disponibilidad además de registrar el contacto. Va acá y no
+    # en un endpoint aparte porque el momento en que se averigua es justamente la llamada.
+    disponibilidad: Optional[Disponibilidad] = None
     proxima_accion: Optional[str] = None
     fecha_proximo_seguimiento: Optional[date] = None
     notas: Optional[str] = None

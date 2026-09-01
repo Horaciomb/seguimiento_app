@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import SelectField from '@/components/ui/select-field'
+import { DISPONIBILIDADES } from '@/lib/disponibilidad'
 
 const RESULTADOS = [
   { value: 'CONTESTO', label: 'Contestó' },
@@ -36,10 +37,14 @@ const MOTIVOS = [
   { value: 'OTRO', label: 'Otro (detallar en notas)' },
 ]
 
-function estadoInicial(medioSugerido) {
+function estadoInicial(medioSugerido, disponibilidadActual) {
   return {
     resultado: '',
     medio_contacto: medioSugerido || 'WHATSAPP',
+    // Precargado con lo que ya se sabe (confirmado antes, o heredado de reclutamiento):
+    // así el campo sirve tanto para confirmarlo como para corregirlo, y quien llama ve de
+    // entrada qué figura hoy. Si no hay nada, queda vacío y es la ocasión de preguntarlo.
+    disponibilidad: disponibilidadActual || '',
     motivo_bajo_rendimiento: '',
     proxima_accion: '',
     fecha_proximo_seguimiento: '',
@@ -59,7 +64,7 @@ export default function RegistrarLlamadaDialog({ fila, fuente, medioSugerido, on
   const [form, setForm] = useState(estadoInicial())
 
   useEffect(() => {
-    if (fila) setForm(estadoInicial(medioSugerido))
+    if (fila) setForm(estadoInicial(medioSugerido, fila.disponibilidad))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fila])
 
@@ -78,6 +83,7 @@ export default function RegistrarLlamadaDialog({ fila, fuente, medioSugerido, on
       resultado: form.resultado,
       medio_contacto: form.medio_contacto,
       motivo_bajo_rendimiento: form.motivo_bajo_rendimiento || undefined,
+      disponibilidad: form.disponibilidad || undefined,
       proxima_accion: form.proxima_accion || undefined,
       fecha_proximo_seguimiento: form.fecha_proximo_seguimiento || undefined,
       notas: form.notas || undefined,
@@ -123,6 +129,20 @@ export default function RegistrarLlamadaDialog({ fila, fuente, medioSugerido, on
             triggerClassName="w-full"
           />
         </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="disponibilidad">Disponibilidad</Label>
+        <SelectField
+          id="disponibilidad"
+          value={form.disponibilidad}
+          onValueChange={(v) => set('disponibilidad', v)}
+          items={DISPONIBILIDADES}
+          placeholder="¿En qué horario trabaja?"
+          triggerClassName="w-full"
+        />
+        <p className="text-xs text-muted-foreground">
+          Queda guardado para la persona y se ve en la lista — no hace falta volver a preguntarlo.
+        </p>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="motivo_bajo_rendimiento">Motivo del bajo rendimiento</Label>

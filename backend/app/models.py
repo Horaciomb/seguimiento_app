@@ -4,7 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
 
-# Única tabla que esta app POSEE en rrhh_bd. Todo lo demás (empleado_unidad,
+# Únicas tablas que esta app POSEE en rrhh_bd (seguimiento_llamada y seguimiento_disponibilidad). Todo lo demás (empleado_unidad,
 # vw_alerta_inactividad, vw_alerta_turnos, vw_produccion_mtd_vs_historico, etc.) es de
 # Lab 001 y se lee con SQL crudo en services/alertas_service.py — declarar un modelo ORM
 # para tablas que no son nuestras invitaría a "gestionarlas" desde acá por accidente.
@@ -29,6 +29,16 @@ MEDIOS_CONTACTO_VALIDOS = ("LLAMADA", "WHATSAPP", "OTRO")
 # Motivo que da el afiliador para su bajo rendimiento — la información que la persona que
 # llama/escribe existe para recopilar. Categorizado (con "OTRO" de escape) para poder
 # reportar "cuántos se van por X motivo" sin leer notas de texto libre a mano.
+# Disponibilidad horaria de la persona (ver migrations/003). Códigos propios de esta app:
+# el dato de reclutamiento es texto libre ("Tiempo Completo", "Turno Mañana", …) y se
+# normaliza a estos valores en services/disponibilidad_service.py.
+DISPONIBILIDADES_VALIDAS = (
+    "TIEMPO_COMPLETO",
+    "MEDIO_TIEMPO",
+    "TURNO_MANANA",
+    "TURNO_TARDE",
+    "NO_DEFINIDO",
+)
 MOTIVOS_BAJO_RENDIMIENTO_VALIDOS = (
     "SALUD",
     "PERSONAL_FAMILIAR",
@@ -57,3 +67,21 @@ class SeguimientoLlamada(Base):
     motivo_bajo_rendimiento: Mapped[str | None] = mapped_column(String(30), nullable=True)
     snapshot_metrica: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped["object"] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class SeguimientoDisponibilidad(Base):
+    """Disponibilidad horaria confirmada por quien contacta a la persona.
+
+    Una fila por empleado (estado actual, no historial) — pisa al valor heredado de
+    `proceso_reclutamiento`, que sólo cubre a quien entró por el formulario de
+    reclutamiento. Mismo motivo que SeguimientoLlamada para no declarar el ForeignKey acá.
+    """
+
+    __tablename__ = "seguimiento_disponibilidad"
+
+    id_empleado: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    disponibilidad: Mapped[str] = mapped_column(String(30), nullable=False)
+    registrado_por: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    fecha_actualizacion: Mapped["object"] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

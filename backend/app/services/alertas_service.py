@@ -14,16 +14,40 @@ Nada de acá escribe en las tablas o vistas de Lab 001.
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .disponibilidad_service import ETIQUETA_SIN_DATO, disponibilidades_por_empleado
 from .llamadas_service import ultimas_llamadas_por_empleado
 
-_TURNOS_ALERTA = "('NOCHE','MADRUGADA')"
+# Sólo para Reincidencia: ese indicador nació para detectar el HÁBITO de cargar fuera de
+# horario (operador `>`), así que sigue mirando NOCHE/MADRUGADA — mismo criterio que
+# 17_exportar_alerta_turnos.py, para que sus números sigan cuadrando con el Excel del Lab.
+# La pestaña de Turnos, en cambio, muestra los 4 turnos (ver _TURNOS_SQL).
+_TURNOS_REINCIDENCIA = "('NOCHE','MADRUGADA')"
+
+
+# Sin dato de disponibilidad: se manda igual (con label "Sin dato") en vez de omitir las
+# claves, para que el filtro por disponibilidad de la UI tenga una opción con la que
+# encontrar justamente a quienes falta preguntarles.
+_DISPONIBILIDAD_VACIA = {
+    "disponibilidad": None,
+    "disponibilidad_label": ETIQUETA_SIN_DATO,
+    "disponibilidad_origen": None,
+    "disponibilidad_registrado_por": None,
+    "disponibilidad_actualizada": None,
+}
 
 
 def _enriquecer_con_ultima_llamada(db: Session, filas: list[dict]) -> list[dict]:
+    """Agrega, por fila, la última llamada registrada y la disponibilidad de la persona.
+
+    Dos consultas por lista completa (no una por fila) — el mismo criterio con el que se
+    resolvió el enriquecimiento de "última llamada" desde el principio.
+    """
     ids = [f["id_empleado"] for f in filas]
     ultimas = ultimas_llamadas_por_empleado(db, ids)
+    disponibilidades = disponibilidades_por_empleado(db, ids)
     for f in filas:
         f["ultima_llamada"] = ultimas.get(f["id_empleado"])
+        f.update(disponibilidades.get(f["id_empleado"], _DISPONIBILIDAD_VACIA))
     return filas
 
 
@@ -46,11 +70,10 @@ def get_inactividad(db: Session) -> list[dict]:
 
 
 _TURNOS_SQL = text(
-    f"""
+    """
     WITH ultima_fecha AS (
         SELECT turno, MAX(fecha) AS fecha
         FROM vw_alerta_turnos
-        WHERE turno IN {_TURNOS_ALERTA}
         GROUP BY turno
     )
     SELECT v.id_empleado, v.ci, v.nombre_completo, v.supervisor, v.ciudad, v.departamento,
@@ -59,15 +82,24 @@ _TURNOS_SQL = text(
     FROM vw_alerta_turnos v
     JOIN ultima_fecha uf ON uf.turno = v.turno AND uf.fecha = v.fecha
     WHERE v.alerta
-    ORDER BY v.turno, v.cantidad DESC
+    ORDER BY v.turno,
+             -- "Peor primero" depende del operador del umbral: con `<` (bajo rendimiento en
+             -- MAÑANA/TARDE) lo grave es la cantidad más baja; con `>` (carga fuera de
+             -- horario en NOCHE/MADRUGADA) lo grave es la más alta.
+             CASE WHEN v.operador = '<' THEN v.cantidad ELSE -v.cantidad END
     """
 )
 
 
 def get_turnos(db: Session) -> list[dict]:
-    """Último cálculo de NOCHE y MADRUGADA en alerta — no una ventana de días.
+    """Último cálculo de CADA turno en alerta — no una ventana de días.
 
-    Mismo criterio que la exclusión del indicador #3 (ver 18b): "¿está en alerta AHORA?".
+    Los 4 turnos, no sólo NOCHE/MADRUGADA (2026-09-01): la vista ya calcula también el bajo
+    rendimiento de MAÑANA y TARDE (umbral `< 5`) y no había forma de verlo desde la app.
+    Se separan en la UI con el filtro por `turno`, que ya existía.
+
+    Cada turno entra con SU propia última fecha calculada (el `GROUP BY turno` del CTE) —
+    Lab 001 no siempre cierra los 4 el mismo día.
     """
     filas = [dict(f) for f in db.execute(_TURNOS_SQL).mappings().all()]
     return _enriquecer_con_ultima_llamada(db, filas)
@@ -79,7 +111,7 @@ _REINCIDENCIA_SQL = text(
            supervisor, telefono, ciudad, departamento, cantidad, operador, umbral
     FROM vw_alerta_turnos
     WHERE alerta
-      AND turno IN {_TURNOS_ALERTA}
+      AND turno IN {_TURNOS_REINCIDENCIA}
       AND fecha >= CURRENT_DATE - (:dias || ' days')::interval
     ORDER BY fecha DESC, turno, nombre_completo
     """
@@ -132,6 +164,10 @@ _PRODUCCION_MTD_SQL = text(
         SELECT id_empleado FROM vw_alerta_inactividad
         WHERE estado_medicion = 'MEDIDO' AND tramo IN ('SEGUIMIENTO', 'CRITICO', 'REVISAR BAJA')
     ),
+    -- A propósito sólo NOCHE/MADRUGADA, aunque la pestaña de Turnos ya muestre los 4:
+    -- este es uno de los 4 filtros de 18b_exportar_produccion_mtd.py. Sumar MAÑANA/TARDE
+    -- acá excluiría de Producción MTD a casi toda la población (con umbral `< 5`, ~90% de
+    -- los medidos alertan) y vaciaría la pestaña.
     ultima_fecha_turno AS (
         SELECT turno, MAX(fecha) AS fecha
         FROM vw_alerta_turnos

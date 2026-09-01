@@ -61,7 +61,7 @@ reproduce a propósito el mismo filtro ya verificado en el script de export corr
 del Lab. Si un número no coincide con lo que ve JP en su Excel, sospechar de la query antes
 que de los datos.
 
-### La única tabla propia: `seguimiento_llamada`
+### Las tablas propias: `seguimiento_llamada` y `seguimiento_disponibilidad`
 
 `backend/migrations/001_create_seguimiento_llamada.sql`. Generaliza
 `alerta_inactividad_notificacion` (que solo dedupea el indicador #1) a un log de contacto
@@ -75,7 +75,7 @@ sigue garantizando Postgres.
 
 ⚠️ **Nota de integración con Lab 001, sin resolver:** `clonar_a_dev.py` de Lab 001
 reconstruye `rrhh_bd_dev` desde SU PROPIO `01_create_tables.sql` en cada re-clon —
-`seguimiento_llamada` no está en ese inventario, así que un re-clon de dev la borra (mismo
+ni `seguimiento_llamada` ni `seguimiento_disponibilidad` están en ese inventario, así que un re-clon de dev las borra (mismo
 modo de falla ya documentado varias veces entre Lab 001 y `rrhh-app`, ver Lab 001 CLAUDE.md
 §FASE 9). Como esta app corre contra `rrhh_bd` (prod, nunca se re-clona) el riesgo práctico
 es bajo. Si hace falta que sobreviva un re-clon de dev, coordinar con Lab 001 para sumarla a
@@ -167,11 +167,64 @@ Unidad, Supervisor y Tramo, y ordenarla por fecha de última afiliación de meno
 Todo esto es client-side (arrays ya traídos por `useQuery`) — no hay cambios de backend ni
 de query SQL para esta parte.
 
+## Disponibilidad horaria de la persona (2026-09-01)
+
+Pedido del usuario: que desde la página se sepa si una persona es de **medio tiempo, tiempo
+completo o turno mañana/tarde** — para saber a qué hora tiene sentido llamarla y con qué
+expectativa medir su producción.
+
+**El dato no existía completo en ninguna tabla de Lab 001** (verificado en `rrhh_bd_dev`):
+
+| Fuente | Cobertura |
+|---|---|
+| `empleado_unidad.disponibilidad_tiempo` | La columna existe pero está **100% NULL** (436 activos, 0 con dato) |
+| `proceso_reclutamiento.disponibilidad_tiempo` | Sí tiene dato, texto libre del formulario de reclutamiento, pero sólo cubre a quien entró por ahí: **24 de 119** en alerta de Inactividad (~20%). El resto es personal legado que nunca llenó ese formulario |
+
+Por eso la solución tiene dos niveles, y el de más arriba pisa al de abajo:
+
+1. **`seguimiento_disponibilidad`** (tabla propia, `migrations/003`) — lo que confirmó quien
+   contactó a la persona desde esta app. Origen `REGISTRADA`.
+2. **Heredado de Lab 001** — `empleado_unidad.disponibilidad_tiempo` y, si no, la última
+   `proceso_reclutamiento` de esa persona. Origen `RECLUTAMIENTO`.
+
+Sin nada de eso, la fila viaja igual con `disponibilidad: null` y label `"Sin dato"` — a
+propósito, para que el filtro de la UI tenga una opción con la que encontrar justamente a
+quienes falta preguntarles.
+
+- **`backend/app/services/disponibilidad_service.py`**: resuelve los dos niveles en **una
+  consulta por lista** (mismo criterio que el enriquecimiento de "última llamada" — no una
+  query por fila) y **normaliza** el texto libre de reclutamiento a códigos propios
+  (`TIEMPO_COMPLETO` · `MEDIO_TIEMPO` · `TURNO_MANANA` · `TURNO_TARDE` · `NO_DEFINIDO`)
+  comparando sin acentos, porque el formulario mezcla `"Turno Mañana"` con `"Tarde"`. Lo que
+  no se reconoce (visto en dev: `"Tiempo Imparcial"`) cae en `NO_DEFINIDO` en vez de
+  descartarse — "vino algo raro" no es lo mismo que "no hay dato".
+- **Las 4 listas de alerta** salen enriquecidas con `disponibilidad`, `disponibilidad_label`,
+  `disponibilidad_origen`, `disponibilidad_registrado_por` y `disponibilidad_actualizada`
+  (`_enriquecer_con_ultima_llamada` en `alertas_service.py`, ahora hace las dos cosas).
+- **Se escribe desde el formulario de "Registrar contacto"**, no desde un endpoint aparte:
+  el momento en que se averigua la disponibilidad es justamente la conversación. `LlamadaIn`
+  acepta un `disponibilidad` opcional que el router saca del payload y guarda con upsert en
+  `seguimiento_disponibilidad`, **en el mismo commit que la llamada** (o se guardan las dos
+  cosas, o ninguna). No es una columna de `seguimiento_llamada` porque es un atributo de la
+  persona, no del contacto: una fila por empleado, la última confirmación pisa a la anterior.
+  El campo llega **precargado** con lo que ya se sabe, así sirve tanto para confirmar como
+  para corregir.
+- **UI**: columna fija "Disponibilidad" en **las 4 pestañas** (es dato de la persona, no
+  métrica de una fuente) — badge con la etiqueta y, debajo, el origen (`confirmado` vs.
+  `de reclutamiento`), presente tanto en la tabla de escritorio como en la tarjeta de
+  teléfono. Y un filtro por `disponibilidad_label` en las 4 pestañas, reusando el
+  `camposFiltro` genérico de `useAlertaListState` sin tocarlo.
+
+Verificado end-to-end contra `rrhh_bd_dev` vía HTTP: las 4 rutas devuelven la distribución
+esperada, un `POST /llamadas` con `disponibilidad` la deja `REGISTRADA`, y un `POST`
+posterior **sin** ese campo no la pisa. Las filas de prueba se borraron.
+
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
-**Qué son y por qué existen:** `seguimiento_llamada` es la única tabla propia de esta app
-(§"La única tabla propia" arriba) — no la trae Lab 001, así que hay que crearla a mano con
-DDL. Dos migraciones, ambas en `backend/migrations/`, ambas **idempotentes**
+**Qué son y por qué existen:** `seguimiento_llamada` y `seguimiento_disponibilidad` son las
+únicas tablas propias de esta app (§"Las tablas propias" arriba) — no las trae Lab 001, así
+que hay que crearlas a mano con DDL. Tres migraciones, todas en `backend/migrations/`, todas
+**idempotentes**
 (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `ADD CONSTRAINT` guardado en un
 `DO $$ ... END $$` que chequea `pg_constraint` antes de agregar):
 
@@ -179,6 +232,7 @@ DDL. Dos migraciones, ambas en `backend/migrations/`, ambas **idempotentes**
 |---|---|
 | `001_create_seguimiento_llamada.sql` | Crea la tabla completa (columnas, `CHECK` en `fuente`/`resultado`, índice por `id_empleado`, `GRANT SELECT/INSERT/UPDATE` a `bex_app`) |
 | `002_add_medio_y_motivo.sql` | Agrega `medio_contacto` y `motivo_bajo_rendimiento` (ver sección de WhatsApp arriba) con sus `CHECK` de valores válidos |
+| `003_create_seguimiento_disponibilidad.sql` | Crea `seguimiento_disponibilidad` (ver sección de Disponibilidad arriba): una fila por empleado, `CHECK` de valores válidos, `GRANT` a `bex_app`. **Aplicada en `rrhh_bd_dev` el 2026-09-01; NO aplicada todavía en prod** — hace falta correrla antes de desplegar este cambio, o la app va a fallar al leer la tabla |
 
 **Cronología real:**
 - **2026-08-28** — ambas aplicadas primero en `rrhh_bd_dev`, para desarrollar y probar sin
