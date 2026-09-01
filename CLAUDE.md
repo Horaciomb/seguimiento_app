@@ -311,7 +311,7 @@ que hay que crearlas a mano con DDL. Tres migraciones, todas en `backend/migrati
 |---|---|
 | `001_create_seguimiento_llamada.sql` | Crea la tabla completa (columnas, `CHECK` en `fuente`/`resultado`, índice por `id_empleado`, `GRANT SELECT/INSERT/UPDATE` a `bex_app`) |
 | `002_add_medio_y_motivo.sql` | Agrega `medio_contacto` y `motivo_bajo_rendimiento` (ver sección de WhatsApp arriba) con sus `CHECK` de valores válidos |
-| `003_create_seguimiento_disponibilidad.sql` | Crea `seguimiento_disponibilidad` (ver sección de Disponibilidad arriba): una fila por empleado, `CHECK` de valores válidos, `GRANT` a `bex_app`. **Aplicada en `rrhh_bd_dev` el 2026-09-01; NO aplicada todavía en prod** — hace falta correrla antes de desplegar este cambio, o la app va a fallar al leer la tabla |
+| `003_create_seguimiento_disponibilidad.sql` | Crea `seguimiento_disponibilidad` (ver sección de Disponibilidad arriba): una fila por empleado, `CHECK` de valores válidos, `GRANT` a `bex_app` |
 
 **Cronología real:**
 - **2026-08-28** — ambas aplicadas primero en `rrhh_bd_dev`, para desarrollar y probar sin
@@ -320,9 +320,22 @@ que hay que crearlas a mano con DDL. Tres migraciones, todas en `backend/migrati
   en el chat antes de correrlas** (es una base compartida en producción, no se tocó sin
   preguntar). Repetidas ahí porque prod nunca corrió estas migraciones — solo dev las tenía
   hasta ese momento.
+- **2026-09-01** — la `003` aplicada en `rrhh_bd_dev` y, después, en `rrhh_bd` (prod),
+  también **con confirmación explícita del usuario**. Ya con el script versionado
+  (`aplicar_migracion.py`, ver abajo), no con uno ad-hoc. Verificado en la salida del propio
+  script contra prod: las 4 columnas, el `CHECK` de los 5 valores, la PK sobre `id_empleado`,
+  el `FOREIGN KEY ... REFERENCES empleado_unidad(id_empleado) ON DELETE CASCADE`, grants de
+  `bex_app` (`SELECT`/`INSERT`/`UPDATE`, más el `DELETE` heredado del esquema como en la 001)
+  y 0 filas. Re-corrida a continuación para confirmar que el no-op es limpio.
 
-**Cómo se aplicaron (mecanismo, no manual — quedó en el historial de la sesión, no hay
-script versionado para esto todavía):** un script Python puntual con `psycopg2`, conectando
+⚠️ **La 003 está en prod pero el código que la usa TODAVÍA NO está desplegado ahí**
+(2026-09-01): la tabla existe y vacía, pero la columna y el filtro de Disponibilidad no se
+ven aún en `https://srv.beneficioslatam.com/rrhh/seguimiento/`. Ese orden es el correcto y
+seguro (la tabla es aditiva, la app que hoy corre en prod ni la lee), pero **falta el deploy**
+— ver §Despliegue. Ojo: `deploy-backend.ps1` aborta si `backend/app` está sucio.
+
+**Cómo se aplicaron la 001 y la 002 (mecanismo, no manual — quedó en el historial de la
+sesión, sin script versionado):** un script Python puntual con `psycopg2`, conectando
 como el rol `bex_ingeniero` (dueño de las tablas — `bex_app` no puede hacer DDL) contra
 `10.0.0.2:5432` / `rrhh_bd`, con la contraseña tomada de la variable de entorno
 `RRHH_PG_PASSWORD` (mismo patrón que usa Lab 001 para sus propias migraciones — ver
@@ -362,6 +375,13 @@ Sin `--prod` va a `rrhh_bd_dev`. Con `--prod` **pide escribir `APLICAR` a mano**
 conectar: `rrhh_bd` es una base compartida con las otras apps de RRHH y el flag solo no
 alcanza como confirmación. Como todas las migraciones son idempotentes, volver a correr una
 ya aplicada es un no-op seguro — y es la forma de verificar en qué estado quedó una base.
+
+⚠️ **Ese `input()` no se puede contestar desde una sesión de agente** (corre sin stdin). La
+`003` en prod se aplicó pasándoselo por pipe: `echo APLICAR | venv\Scripts\python.exe
+migrations/aplicar_migracion.py ... --prod`, y **sólo después de que el usuario lo autorizara
+explícitamente en el chat**. Se evaluó agregar un flag `--confirmado` que saltee el prompt y
+se descartó: hacer visible el pipe en el comando es preferible a dejar en el repo una forma
+cómoda de correr DDL en producción sin que nadie confirme nada.
 
 ## Verificado el 2026-08-28
 
