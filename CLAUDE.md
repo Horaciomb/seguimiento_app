@@ -379,9 +379,9 @@ y 384 de 405 filas de Turnos resuelven teléfono; en `rrhh_bd_dev`, 109/119 y 10
 
 ### `seguimiento_contacto_supervisor` (migración 004)
 
-Tabla propia, aplicada en `rrhh_bd_dev` el 2026-09-01 con `aplicar_migracion.py`.
-**Todavía NO aplicada en `rrhh_bd` (prod)** — falta la confirmación explícita del usuario,
-igual que con las 3 anteriores.
+Tabla propia, aplicada en `rrhh_bd_dev` el 2026-09-01 y en `rrhh_bd` (prod) el
+2026-09-02, con `aplicar_migracion.py` y confirmación explícita del usuario — igual que las
+3 anteriores.
 
 - **Una fila por contacto, no por afiliador**: un mensaje habla de N personas a la vez.
   Meter una fila por afiliador en `seguimiento_llamada` habría llenado el historial de cada
@@ -468,6 +468,39 @@ bindear. La primera pasada de SSR dio "1 solo grupo, sin teléfono" por eso, no 
 antes de creerle a una prueba local, verificar con `netstat -ano` + `Get-Process` qué proceso
 tiene el puerto, igual que ya dice la nota de `--reload` más arriba.
 
+### Despliegue del contacto al supervisor (2026-09-02)
+
+✅ **En producción.** Mismo orden seguro de siempre: migración 004 en `rrhh_bd` primero,
+después `deploy-backend.ps1`, después `deploy-frontend.ps1`.
+
+⚠ **La migración en prod no la pudo correr el agente**: el comando
+(`echo APLICAR | ... --prod`) lo bloqueó el clasificador de permisos de auto mode por ser
+DDL contra la base compartida. No se intentó rodearlo por otra vía — lo corrió el usuario a
+mano con el prefijo `!` en el chat. Si vuelve a pasar, ese es el camino: pedirlo en vez de
+buscarle la vuelta. Ojo que ese prompt es **bash**, así que las barras van `venv/Scripts/`,
+no `venv\Scripts\`.
+
+Verificado contra la URL pública con `Cache-Control: no-cache`:
+
+- `/api/health` → `ok` / `database conectado`.
+- Las 4 rutas de alerta devuelven `id_persona_supervisor` y `supervisor_telefono`:
+  **turnos 752 filas / 714 con supervisor / 710 con teléfono, sobre 41 supervisores
+  distintos**; reincidencia 58/56/56 (17 supervisores); producción MTD 73/72/72 (26).
+  **Inactividad devuelve 0 filas** — no es un error del despliegue: ese día los 387 medidos
+  estaban todos en tramo `AL DIA`.
+- `GET /api/contactos-supervisor/ultimos` → 200 `[]` (la tabla existe y `bex_app` la lee).
+- `POST /api/contactos-supervisor` con un supervisor real insertó una fila en `rrhh_bd`
+  — la prueba de fuego del `GRANT INSERT`, igual que se hizo con la 001/002 — y el
+  backend derivó `cantidad_afiliadores` sin que el cliente la mandara. **Fila de prueba
+  borrada** (la tabla quedó en 0 filas).
+- El bundle servido es el recién construido (`index-DJpJA-jL.js`) y contiene
+  `Supervisores`, `Sin líder asignado`, `contactos-supervisor` y `afiliadores de tu equipo`.
+- `/rrhh/personal/` y `/rrhh/vetados/` siguen respondiendo 200: no se tocó Caddy (la ruta
+  `/rrhh/seguimiento/*` ya existía desde el despliegue del 2026-08-31).
+
+Rollback del frontend, si hiciera falta:
+`cd C:\Proyectos\rrhh\web\seguimiento & ren dist dist_malo & ren dist_prev_20260902-092716 dist`
+
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
 **Qué son y por qué existen:** `seguimiento_llamada` y `seguimiento_disponibilidad` son las
@@ -482,7 +515,7 @@ que hay que crearlas a mano con DDL. Tres migraciones, todas en `backend/migrati
 | `001_create_seguimiento_llamada.sql` | Crea la tabla completa (columnas, `CHECK` en `fuente`/`resultado`, índice por `id_empleado`, `GRANT SELECT/INSERT/UPDATE` a `bex_app`) |
 | `002_add_medio_y_motivo.sql` | Agrega `medio_contacto` y `motivo_bajo_rendimiento` (ver sección de WhatsApp arriba) con sus `CHECK` de valores válidos |
 | `003_create_seguimiento_disponibilidad.sql` | Crea `seguimiento_disponibilidad` (ver sección de Disponibilidad arriba): una fila por empleado, `CHECK` de valores válidos, `GRANT` a `bex_app` |
-| `004_create_seguimiento_contacto_supervisor.sql` | Crea `seguimiento_contacto_supervisor` (ver sección de Contacto al supervisor arriba): una fila por contacto, `afiliadores` JSONB con el snapshot, 3 `CHECK`, índice por supervisor, `GRANT` a `bex_app` + la secuencia. **Aplicada en `rrhh_bd_dev` el 2026-09-01; PENDIENTE en prod** |
+| `004_create_seguimiento_contacto_supervisor.sql` | Crea `seguimiento_contacto_supervisor` (ver sección de Contacto al supervisor arriba): una fila por contacto, `afiliadores` JSONB con el snapshot, 3 `CHECK`, índice por supervisor, `GRANT` a `bex_app` + la secuencia. Aplicada en `rrhh_bd_dev` el 2026-09-01 y en `rrhh_bd` el 2026-09-02 |
 
 **Cronología real:**
 - **2026-08-28** — ambas aplicadas primero en `rrhh_bd_dev`, para desarrollar y probar sin
