@@ -8,6 +8,10 @@ salvo el indicador de inactividad, que tiene un dedup propio
 (`alerta_inactividad_notificacion`). Esta app generaliza esa idea a las tres fuentes, con un
 log de contacto real en vez de solo dedup.
 
+Desde el 2026-09-02 el contacto no es sólo al afiliador: la app también agrupa la alerta
+por **supervisor / líder a cargo** y registra el llamado de atención que se le hace a él por
+la gente de su equipo (§"Contacto al supervisor").
+
 Ver `contexto_indicadores.md` para el detalle funcional de cada indicador (qué mide, de
 dónde sale el dato, cómo se calcula) — es la referencia técnica de Lab 001, no de esta app.
 
@@ -22,7 +26,8 @@ autenticándose).
 
 - No calcula ningún indicador. Todo el cálculo es de Lab 001; esta app solo LEE sus vistas
   (`vw_alerta_inactividad`, `vw_alerta_turnos`, `vw_produccion_mtd_vs_historico`) y agrega su
-  propia lectura/escritura sobre `seguimiento_llamada`.
+  propia lectura/escritura sobre sus 3 tablas (`seguimiento_llamada`,
+  `seguimiento_disponibilidad`, `seguimiento_contacto_supervisor`).
 - No reemplaza (todavía) los Excel que Lab 001 manda a JP por PUMA — conviven. Si algún día
   se decide que esta app reemplaza esa entrega, es una decisión aparte, coordinada con Lab 001.
 
@@ -65,9 +70,18 @@ reproduce a propósito el mismo filtro ya verificado en el script de export corr
 del Lab. Si un número no coincide con lo que ve JP en su Excel, sospechar de la query antes
 que de los datos.
 
-### Las tablas propias: `seguimiento_llamada` y `seguimiento_disponibilidad`
+### Las 3 tablas propias de esta app
 
-`backend/migrations/001_create_seguimiento_llamada.sql`. Generaliza
+Todo lo demás que lee la app es de Lab 001. Estas tres son suyas, y por eso hay que crearlas
+a mano con DDL (§"Migraciones aplicadas en `rrhh_bd`"):
+
+| Tabla | Qué guarda | Cardinalidad |
+|---|---|---|
+| `seguimiento_llamada` | Cada contacto a un afiliador | N por empleado (historial) |
+| `seguimiento_disponibilidad` | En qué horario trabaja la persona | 1 por empleado (estado actual) |
+| `seguimiento_contacto_supervisor` | Cada llamado de atención a un supervisor | N por supervisor (historial) |
+
+**`seguimiento_llamada`** — `backend/migrations/001_create_seguimiento_llamada.sql`. Generaliza
 `alerta_inactividad_notificacion` (que solo dedupea el indicador #1) a un log de contacto
 real para las 4 fuentes: qué se llamó, qué contestó, qué sigue.
 
@@ -77,9 +91,17 @@ esté en el mismo `MetaData` para resolverla en el flush, y eso hubiera obligado
 `empleado_unidad` como modelo propio de esta app (no lo es, es de Lab 001). La integridad la
 sigue garantizando Postgres.
 
+Ojo que esto vale para `seguimiento_llamada` y `seguimiento_disponibilidad`, cuyas tablas
+reales SÍ tienen el `REFERENCES`. `seguimiento_contacto_supervisor` es un caso distinto y no
+hay que "arreglarlo": ahí no hay FK **ni en el ORM ni en la base**, a propósito, porque
+`id_persona_supervisor` es una referencia blanda en el propio Lab 001 (§"Contacto al
+supervisor").
+
 ⚠️ **Nota de integración con Lab 001, sin resolver:** `clonar_a_dev.py` de Lab 001
 reconstruye `rrhh_bd_dev` desde SU PROPIO `01_create_tables.sql` en cada re-clon —
-ni `seguimiento_llamada` ni `seguimiento_disponibilidad` están en ese inventario, así que un re-clon de dev las borra (mismo
+**ninguna de las 3** (`seguimiento_llamada`, `seguimiento_disponibilidad`,
+`seguimiento_contacto_supervisor`) está en ese inventario, así que un re-clon de dev las
+borra (mismo
 modo de falla ya documentado varias veces entre Lab 001 y `rrhh-app`, ver Lab 001 CLAUDE.md
 §FASE 9). Como esta app corre contra `rrhh_bd` (prod, nunca se re-clona) el riesgo práctico
 es bajo. Si hace falta que sobreviva un re-clon de dev, coordinar con Lab 001 para sumarla a
@@ -503,9 +525,10 @@ Rollback del frontend, si hiciera falta:
 
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
-**Qué son y por qué existen:** `seguimiento_llamada` y `seguimiento_disponibilidad` son las
-únicas tablas propias de esta app (§"Las tablas propias" arriba) — no las trae Lab 001, así
-que hay que crearlas a mano con DDL. Tres migraciones, todas en `backend/migrations/`, todas
+**Qué son y por qué existen:** `seguimiento_llamada`, `seguimiento_disponibilidad` y
+`seguimiento_contacto_supervisor` son las únicas tablas propias de esta app (§"Las 3 tablas
+propias" arriba) — no las trae Lab 001, así que hay que crearlas a mano con DDL. Cuatro
+migraciones, todas en `backend/migrations/`, todas
 **idempotentes**
 (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `ADD CONSTRAINT` guardado en un
 `DO $$ ... END $$` que chequea `pg_constraint` antes de agregar):
