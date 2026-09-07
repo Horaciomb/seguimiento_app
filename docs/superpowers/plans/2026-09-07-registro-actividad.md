@@ -53,6 +53,14 @@ $SCRATCH = "C:\Users\hmolina\AppData\Local\Temp\claude\C--temp-RRHH-Lab-seguimie
 $PY = "C:\temp\RRHH\Lab\seguimiento_app\backend\venv\Scripts\python.exe"
 ```
 
+⚠️ **Las 3 tablas están VACÍAS en `rrhh_bd_dev`** (verificado en la Task 1: 0/0/0). Contra
+tablas vacías casi todas las aserciones pasan **por vacuidad** —un export de 0 filas
+"coincide" con una pantalla de 0 filas sin haber probado nada—, así que las filas de prueba
+se siembran **una sola vez y se MANTIENEN** hasta la Task 8, que es la que las borra. El
+sembrador vive en `$SCRATCH\sembrar_pruebas.py` y toda fila lleva `registrado_por` con
+prefijo `PRUEBA_` para poder borrarlas de un solo `DELETE`. **Ninguna tarea intermedia
+limpia la base.**
+
 ⚠️ **Antes de creerle a cualquier prueba local contra el puerto 8010**, verificar que quien
 escucha es el uvicorn que acabás de levantar y no uno de una sesión anterior con el código
 viejo:
