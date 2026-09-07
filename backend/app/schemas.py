@@ -188,3 +188,40 @@ class UltimoContactoSupervisorOut(BaseModel):
     proxima_accion: Optional[str] = None
     fecha_proximo_seguimiento: Optional[date] = None
     registrado_por: Optional[str] = None
+
+
+# --- Registro de actividad (línea de tiempo unificada de las 3 tablas propias) ---------
+
+TipoActividad = Literal["AFILIADOR", "SUPERVISOR", "DISPONIBILIDAD"]
+
+
+class ActividadItemOut(BaseModel):
+    """Un registro de la línea de tiempo, ya normalizado por `actividad_service`.
+
+    ⚠️ `id_registro` NO es único entre tipos: el de DISPONIBILIDAD es un `id_empleado`,
+    porque esa tabla no tiene id propio. La clave estable es el par (tipo, id_registro).
+    """
+
+    tipo: TipoActividad
+    id_registro: int
+    fecha: datetime
+    registrado_por: Optional[str] = None
+    sujeto_id: Optional[int] = None
+    sujeto_nombre: Optional[str] = None
+    sujeto_ci: Optional[str] = None
+    indicador: Optional[str] = None
+    resultado: Optional[str] = None
+    medio: Optional[str] = None
+    # Abierto a propósito: cada tipo aporta claves distintas y tipar la unión no le
+    # compraría nada a un panel de sólo lectura.
+    detalle: dict[str, Any] = {}
+
+
+class ActividadPageOut(BaseModel):
+    items: list[ActividadItemOut]
+    total: int
+
+
+class RegistradorOut(BaseModel):
+    registrado_por: str
+    cantidad: int
