@@ -207,115 +207,109 @@ export default function SeguimientoPage() {
   })
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Seguimiento de indicadores</h1>
+    <Tabs defaultValue="inactividad">
+      {/* Las 4 pestañas no entran en el ancho de un teléfono: se desplazan en horizontal,
+          sangrando el padding de la página para que se vea que hay más a la derecha. */}
+      <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+        <TabsList className="h-11 md:h-9">
+          <TabsTrigger value="inactividad">Inactividad ({inactividad.total || '…'})</TabsTrigger>
+          <TabsTrigger value="turnos">Turnos ({turnos.total || '…'})</TabsTrigger>
+          <TabsTrigger value="reincidencia">Reincidencia ({reincidencia.total || '…'})</TabsTrigger>
+          <TabsTrigger value="produccion-mtd">Producción MTD ({produccionMtd.total || '…'})</TabsTrigger>
+          <TabsTrigger value="supervisores">Supervisores</TabsTrigger>
+        </TabsList>
       </div>
 
-      <Tabs defaultValue="inactividad">
-        {/* Las 4 pestañas no entran en el ancho de un teléfono: se desplazan en horizontal,
-            sangrando el padding de la página para que se vea que hay más a la derecha. */}
-        <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-          <TabsList className="h-11 md:h-9">
-            <TabsTrigger value="inactividad">Inactividad ({inactividad.total || '…'})</TabsTrigger>
-            <TabsTrigger value="turnos">Turnos ({turnos.total || '…'})</TabsTrigger>
-            <TabsTrigger value="reincidencia">Reincidencia ({reincidencia.total || '…'})</TabsTrigger>
-            <TabsTrigger value="produccion-mtd">Producción MTD ({produccionMtd.total || '…'})</TabsTrigger>
-            <TabsTrigger value="supervisores">Supervisores</TabsTrigger>
-          </TabsList>
-        </div>
+      <TabsContent value="inactividad" className="pt-3">
+        <Panel
+          titulo="Inactividad"
+          descripcion="Afiliadores sin registrar una sola afiliación en varios días hábiles."
+          fuente="INACTIVIDAD"
+          estado={inactividad}
+          filtroCampos={[
+            { campo: 'unidad_negocio', label: 'Unidad' },
+            { campo: 'supervisor', label: 'Supervisor' },
+            { campo: 'tramo', label: 'Tramo' },
+            { campo: 'disponibilidad_label', label: 'Disponibilidad' },
+          ]}
+          columns={[
+            { header: 'Tramo', cell: (r) => <Badge variant={TRAMO_VARIANT[r.tramo] ?? 'secondary'}>{r.tramo}</Badge> },
+            { header: 'Días inactivo', cell: (r) => r.dias_inactividad },
+            { header: 'Última afiliación', sortKey: 'fecha_ultima_afiliacion', cell: (r) => fmtFechaCorta(r.fecha_ultima_afiliacion) },
+            {
+              header: 'Foto calculada',
+              cell: (r) => r.horas_desde_el_calculo == null
+                ? '—'
+                : `Hace ${Math.round(r.horas_desde_el_calculo)} h`,
+            },
+          ]}
+        />
+      </TabsContent>
 
-        <TabsContent value="inactividad" className="pt-3">
-          <Panel
-            titulo="Inactividad"
-            descripcion="Afiliadores sin registrar una sola afiliación en varios días hábiles."
-            fuente="INACTIVIDAD"
-            estado={inactividad}
-            filtroCampos={[
-              { campo: 'unidad_negocio', label: 'Unidad' },
-              { campo: 'supervisor', label: 'Supervisor' },
-              { campo: 'tramo', label: 'Tramo' },
-              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
-            ]}
-            columns={[
-              { header: 'Tramo', cell: (r) => <Badge variant={TRAMO_VARIANT[r.tramo] ?? 'secondary'}>{r.tramo}</Badge> },
-              { header: 'Días inactivo', cell: (r) => r.dias_inactividad },
-              { header: 'Última afiliación', sortKey: 'fecha_ultima_afiliacion', cell: (r) => fmtFechaCorta(r.fecha_ultima_afiliacion) },
-              {
-                header: 'Foto calculada',
-                cell: (r) => r.horas_desde_el_calculo == null
-                  ? '—'
-                  : `Hace ${Math.round(r.horas_desde_el_calculo)} h`,
-              },
-            ]}
-          />
-        </TabsContent>
+      <TabsContent value="turnos" className="pt-3">
+        <Panel
+          titulo="Turnos"
+          descripcion="Último cálculo de cada turno en alerta: bajo rendimiento en MAÑANA/TARDE y carga fuera de horario en NOCHE/MADRUGADA. Filtrá por turno para separarlos."
+          fuente="TURNOS"
+          estado={turnos}
+          filtroCampos={[
+            { campo: 'unidad_negocio', label: 'Unidad' },
+            { campo: 'supervisor', label: 'Supervisor' },
+            { campo: 'turno', label: 'Turno' },
+            { campo: 'disponibilidad_label', label: 'Disponibilidad' },
+          ]}
+          columns={[
+            { header: 'Turno', cell: (r) => r.turno },
+            { header: 'Cantidad', sortKey: 'cantidad', cell: (r) => r.cantidad },
+            { header: 'Umbral', cell: (r) => `${r.operador} ${r.umbral}` },
+            { header: 'Fecha', sortKey: 'fecha', cell: (r) => fmtFechaCorta(r.fecha) },
+          ]}
+        />
+      </TabsContent>
 
-        <TabsContent value="turnos" className="pt-3">
-          <Panel
-            titulo="Turnos"
-            descripcion="Último cálculo de cada turno en alerta: bajo rendimiento en MAÑANA/TARDE y carga fuera de horario en NOCHE/MADRUGADA. Filtrá por turno para separarlos."
-            fuente="TURNOS"
-            estado={turnos}
-            filtroCampos={[
-              { campo: 'unidad_negocio', label: 'Unidad' },
-              { campo: 'supervisor', label: 'Supervisor' },
-              { campo: 'turno', label: 'Turno' },
-              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
-            ]}
-            columns={[
-              { header: 'Turno', cell: (r) => r.turno },
-              { header: 'Cantidad', sortKey: 'cantidad', cell: (r) => r.cantidad },
-              { header: 'Umbral', cell: (r) => `${r.operador} ${r.umbral}` },
-              { header: 'Fecha', sortKey: 'fecha', cell: (r) => fmtFechaCorta(r.fecha) },
-            ]}
-          />
-        </TabsContent>
+      <TabsContent value="reincidencia" className="pt-3">
+        <Panel
+          titulo="Reincidencia NOCHE/MADRUGADA"
+          descripcion="Quiénes repitieron la alerta de turno 3 o más veces en los últimos 30 días."
+          fuente="REINCIDENCIA"
+          estado={reincidencia}
+          filtroCampos={[
+            { campo: 'unidad_negocio', label: 'Unidad' },
+            { campo: 'supervisor', label: 'Supervisor' },
+            { campo: 'disponibilidad_label', label: 'Disponibilidad' },
+          ]}
+          columns={[
+            { header: 'Veces en alerta', cell: (r) => r.veces_en_alerta },
+            { header: 'Primera fecha', cell: (r) => fmtFechaCorta(r.primera_fecha) },
+            { header: 'Última fecha', cell: (r) => fmtFechaCorta(r.ultima_fecha) },
+          ]}
+        />
+      </TabsContent>
 
-        <TabsContent value="reincidencia" className="pt-3">
-          <Panel
-            titulo="Reincidencia NOCHE/MADRUGADA"
-            descripcion="Quiénes repitieron la alerta de turno 3 o más veces en los últimos 30 días."
-            fuente="REINCIDENCIA"
-            estado={reincidencia}
-            filtroCampos={[
-              { campo: 'unidad_negocio', label: 'Unidad' },
-              { campo: 'supervisor', label: 'Supervisor' },
-              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
-            ]}
-            columns={[
-              { header: 'Veces en alerta', cell: (r) => r.veces_en_alerta },
-              { header: 'Primera fecha', cell: (r) => fmtFechaCorta(r.primera_fecha) },
-              { header: 'Última fecha', cell: (r) => fmtFechaCorta(r.ultima_fecha) },
-            ]}
-          />
-        </TabsContent>
+      <TabsContent value="produccion-mtd" className="pt-3">
+        <Panel
+          titulo="Producción MTD"
+          descripcion="Producción del mes en curso por debajo de su propio promedio histórico."
+          fuente="PRODUCCION_MTD"
+          estado={produccionMtd}
+          filtroCampos={[
+            { campo: 'unidad_negocio', label: 'Unidad' },
+            { campo: 'supervisor', label: 'Supervisor' },
+            { campo: 'accion_sugerida', label: 'Acción sugerida' },
+            { campo: 'disponibilidad_label', label: 'Disponibilidad' },
+          ]}
+          columns={[
+            { header: 'Producción', cell: (r) => r.produccion_actual_mtd },
+            { header: 'Esperado', cell: (r) => r.promedio_historico_mtd.toFixed(1) },
+            { header: 'Cumplimiento', cell: (r) => `${Math.round(r.cumplimiento_pct * 100)}%` },
+            { header: 'Acción sugerida', cell: (r) => r.accion_sugerida },
+          ]}
+        />
+      </TabsContent>
 
-        <TabsContent value="produccion-mtd" className="pt-3">
-          <Panel
-            titulo="Producción MTD"
-            descripcion="Producción del mes en curso por debajo de su propio promedio histórico."
-            fuente="PRODUCCION_MTD"
-            estado={produccionMtd}
-            filtroCampos={[
-              { campo: 'unidad_negocio', label: 'Unidad' },
-              { campo: 'supervisor', label: 'Supervisor' },
-              { campo: 'accion_sugerida', label: 'Acción sugerida' },
-              { campo: 'disponibilidad_label', label: 'Disponibilidad' },
-            ]}
-            columns={[
-              { header: 'Producción', cell: (r) => r.produccion_actual_mtd },
-              { header: 'Esperado', cell: (r) => r.promedio_historico_mtd.toFixed(1) },
-              { header: 'Cumplimiento', cell: (r) => `${Math.round(r.cumplimiento_pct * 100)}%` },
-              { header: 'Acción sugerida', cell: (r) => r.accion_sugerida },
-            ]}
-          />
-        </TabsContent>
-
-        <TabsContent value="supervisores" className="pt-3">
-          <PanelSupervisores />
-        </TabsContent>
-      </Tabs>
-    </div>
+      <TabsContent value="supervisores" className="pt-3">
+        <PanelSupervisores />
+      </TabsContent>
+    </Tabs>
   )
 }
