@@ -1,3 +1,15 @@
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import SelectField from '@/components/ui/select-field'
+import PaginationBar from '@/components/ui/pagination-bar'
+import EstadoLista from '@/components/ui/estado-lista'
+import TablaActividad from '@/components/actividad/TablaActividad'
+import { useActividadState } from '@/hooks/useActividadState'
+
+// El Select no admite value="" como item, así que "todos" necesita un centinela — mismo
+// recurso que ya usa SeguimientoPage.
+const TODOS = '__todos__'
+
 /**
  * Todo lo que esta app registró, en una sola línea de tiempo.
  *
@@ -6,6 +18,16 @@
  * abrir el historial persona por persona.
  */
 export default function ActividadPage() {
+  const s = useActividadState()
+
+  const itemsRegistradores = [
+    { value: TODOS, label: 'Quién registró: todos' },
+    ...s.registradores.map((r) => ({
+      value: r.registrado_por,
+      label: `${r.registrado_por} (${r.cantidad})`,
+    })),
+  ]
+
   return (
     <div className="space-y-3">
       <div>
@@ -15,6 +37,47 @@ export default function ActividadPage() {
           cronológico.
         </p>
       </div>
+
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end">
+          <div className="space-y-1">
+            <Label htmlFor="desde" className="text-xs text-muted-foreground">Desde</Label>
+            <Input id="desde" type="date" value={s.desde}
+              onChange={(e) => s.setDesde(e.target.value)} className="w-full sm:w-40" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="hasta" className="text-xs text-muted-foreground">Hasta</Label>
+            <Input id="hasta" type="date" value={s.hasta}
+              onChange={(e) => s.setHasta(e.target.value)} className="w-full sm:w-40" />
+          </div>
+          <div className="col-span-2 space-y-1">
+            <Label className="text-xs text-muted-foreground">Quién registró</Label>
+            <SelectField
+              value={s.registradoPor || TODOS}
+              onValueChange={(v) => s.setRegistradoPor(v === TODOS ? '' : v)}
+              items={itemsRegistradores}
+              triggerClassName="w-full sm:w-56"
+            />
+          </div>
+        </div>
+        <Input
+          value={s.q}
+          onChange={(e) => s.setQ(e.target.value)}
+          placeholder="Buscar por nombre o CI…"
+          className="w-full sm:max-w-sm"
+        />
+      </div>
+
+      {s.isError ? (
+        <EstadoLista error={s.error} onReintentar={s.refetch} />
+      ) : s.isLoading ? (
+        <p className="text-sm text-muted-foreground">Cargando…</p>
+      ) : (
+        <>
+          <TablaActividad items={s.items} onVerDetalle={s.setDetalle} />
+          <PaginationBar page={s.page} pageSize={s.pageSize} total={s.total} onPageChange={s.setPage} />
+        </>
+      )}
     </div>
   )
 }
