@@ -1,9 +1,15 @@
+import { Download } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import AvisoExport from '@/components/ui/aviso-export'
+import useExportarXlsx from '@/hooks/useExportarXlsx'
+import { getActividadXlsx } from '@/api/actividad'
 import SelectField from '@/components/ui/select-field'
 import PaginationBar from '@/components/ui/pagination-bar'
 import EstadoLista from '@/components/ui/estado-lista'
 import TablaActividad from '@/components/actividad/TablaActividad'
+import DetalleActividadDialog from '@/components/actividad/DetalleActividadDialog'
 import { useActividadState } from '@/hooks/useActividadState'
 
 // El Select no admite value="" como item, así que "todos" necesita un centinela — mismo
@@ -19,6 +25,7 @@ const TODOS = '__todos__'
  */
 export default function ActividadPage() {
   const s = useActividadState()
+  const xlsx = useExportarXlsx({ nombrePorDefecto: 'actividad.xlsx', etiqueta: 'registros' })
 
   const itemsRegistradores = [
     { value: TODOS, label: 'Quién registró: todos' },
@@ -66,6 +73,25 @@ export default function ActividadPage() {
           placeholder="Buscar por nombre o CI…"
           className="w-full sm:max-w-sm"
         />
+
+        {/* Se le pasa `s.filtros` y NO la página: el archivo lleva el resultado del filtro,
+            no los 25 que se están viendo. */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="touch"
+            className="sm:h-9"
+            disabled={xlsx.exportando || !s.total}
+            onClick={() => xlsx.exportar(() => getActividadXlsx(s.filtros))}
+          >
+            <Download className="h-4 w-4" />
+            {xlsx.exportando ? 'Generando…' : 'Exportar a Excel'}
+          </Button>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {s.total} registro{s.total === 1 ? '' : 's'}
+          </span>
+        </div>
+        <AvisoExport mensaje={xlsx.aviso} onCerrar={xlsx.limpiarAviso} />
       </div>
 
       {s.isError ? (
@@ -78,6 +104,8 @@ export default function ActividadPage() {
           <PaginationBar page={s.page} pageSize={s.pageSize} total={s.total} onPageChange={s.setPage} />
         </>
       )}
+
+      <DetalleActividadDialog fila={s.detalle} onClose={() => s.setDetalle(null)} />
     </div>
   )
 }
