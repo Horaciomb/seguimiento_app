@@ -647,6 +647,58 @@ todo en teléfono.
 `DetalleActividadDialog` y para los diálogos que ya existían. Lo que se verificó en su lugar
 es que los datos que consumen son los correctos.
 
+### Despliegue del registro de actividad (2026-09-07)
+
+✅ **En producción.** `dev @ 85a480d`, pusheado a `origin/dev` antes de desplegar.
+`deploy-backend.ps1` y después `deploy-frontend.ps1`. **Sin migración previa** — es la
+primera entrega de esta app que no toca el esquema, así que no hubo DDL ni confirmación de
+base que pedir.
+
+**Antes de desplegar se revisó `20260905_avisar_hm.md`** (aviso de cambios de
+infraestructura del 05-sep). Dos de sus puntos tocaban este despliegue y se verificaron
+**contra producción, no contra la documentación** — que es lo que ese mismo aviso pide en su
+punto 7:
+
+- **Las reglas nuevas de Caddy que devuelven 404** (`@sensibles` por extensión de archivo,
+  `@no_publicos` en `/api/*`) **no bloquean el export**: pedir
+  `/rrhh/seguimiento/api/actividad/export.xlsx` devolvía el 404 de **FastAPI**
+  (`{"detail":"Not Found"}`, con cuerpo), no el de Caddy (cuerpo vacío) → la petición llega
+  al backend. Confirmado después del deploy: 200, `Content-Type` de xlsx y firma `PK` de zip.
+- **El Caddyfile no se tocó.** La ruta existe desde el 31-ago y el aviso dice que repositorio
+  y VPS ya están alineados.
+
+⚠️ **Hallazgo propio, que no estaba en el aviso: `@sensibles` aplica también BAJO nuestro
+prefijo**, no sólo en la raíz — `/rrhh/seguimiento/prueba.bat` devuelve el 404 de Caddy. Hoy
+la lista es `.bat .cmd .pyc .pyd .exe .dll` y `.xlsx` no está ahí, pero **si alguien amplía
+esa lista en el Caddyfile, el export de esta app se rompe sin que nadie la toque**. Es el
+primer lugar donde mirar si un día el botón de Excel empieza a fallar con un 404 sin cuerpo.
+
+⚠️ **El riesgo real de este deploy no era Caddy sino el venv compartido:**
+`deploy-backend.ps1` corre `uv pip install -r requirements.txt` sobre `C:\uv-envs\rrhh`, que
+comparten `sistema-personal` y `web_validador_vetados`, y nuestro `requirements.txt` pinea
+versiones exactas — si alguna app hubiera subido una, este deploy se la bajaba. Se comparó
+antes, pin por pin: el venv ya tenía exactamente los nuestros, `openpyxl 3.1.5` incluido. El
+deploy lo confirmó: `Checked 9 packages in 31ms`, sin instalar nada.
+
+Verificado contra la URL pública con `Cache-Control: no-cache`:
+
+- `/api/actividad` → 200 `{"items":[],"total":0}` y `/api/actividad/registradores` → 200 `[]`.
+  **0 filas es lo correcto**: `rrhh_bd` no tiene ningún contacto registrado todavía, y la
+  tabla se llena cuando alguien usa la app. Lo que prueba el deploy es que responde 200 y no
+  500 — o sea que el `UNION ALL` y sus JOIN a `persona`/`empleado_unidad` son válidos contra
+  el esquema de prod.
+- `/api/actividad/export.xlsx` → 200, `Content-Disposition` con sello de tiempo,
+  `X-Filas-Exportadas`/`X-Total-Disponible` y `Access-Control-Expose-Headers` presentes.
+- Bundle servido: `index-DJpJA-jL.js` → **`index-CK9afyEp.js`**, y contiene
+  `Registro de actividad`, `Exportar a Excel`, `actividad/export.xlsx` y `Quién registró`.
+- **Nada de lo anterior se rompió**: inactividad 136 · turnos 766 · reincidencia 59 ·
+  producción MTD 115 · contactos-supervisor 0. Y las vecinas del mismo servidor siguen igual
+  que en la línea base pre-deploy: `/rrhh/personal/` 200 · `/rrhh/vetados/` 200 ·
+  `/zas/calidad/api` 200 · `/convocatoria/bnb` 301.
+
+Rollback del frontend, si hiciera falta:
+`cd C:\Proyectos\rrhh\web\seguimiento & ren dist dist_malo & ren dist_prev_20260907-150343 dist`
+
 ⚠️ **La comprobación de venv de este archivo da un falso positivo en esta máquina.**
 `Get-Process -Id <pid> | Select Path` sobre el uvicorn muestra el Python **global** aunque se
 lo lance con el del venv, porque `venv\Scripts\python.exe` es el *venv launcher* de Windows y
