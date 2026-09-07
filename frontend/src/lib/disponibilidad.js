@@ -28,3 +28,8 @@ export const DISPONIBILIDAD_VARIANT = {
   TURNO_TARDE: 'secondary',
   NO_DEFINIDO: 'outline',
 }
+
+/** `código -> etiqueta`, derivado de DISPONIBILIDADES para que no puedan divergir. */
+export const DISPONIBILIDAD_LABEL = Object.fromEntries(
+  DISPONIBILIDADES.map((d) => [d.value, d.label]),
+)
