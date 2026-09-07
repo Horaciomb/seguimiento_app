@@ -60,6 +60,9 @@ frontend/  React 19 + Vite + Tailwind v4 + TanStack Query, SIN login/router.
 | `POST /contactos-supervisor` | Registra el llamado de atención al supervisor (ver §Contacto al supervisor) |
 | `GET /contactos-supervisor/ultimos` | Último contacto de cada supervisor, opcionalmente acotado por `fuente` |
 | `GET /contactos-supervisor/historial/{id_persona_supervisor}` | Historial completo de ese supervisor |
+| `GET /actividad` | La línea de tiempo unificada de las 3 tablas propias, paginada y filtrable (ver §Registro de actividad) |
+| `GET /actividad/registradores` | Los `registrado_por` distintos con su conteo, **sin aplicar los filtros de la pantalla** |
+| `GET /actividad/export.xlsx` | Los mismos filtros que la lista, en un `.xlsx`, con los headers de recorte |
 
 Cada fila de los 4 GET de alertas se enriquece con la última `seguimiento_llamada` de ese
 empleado (`services/llamadas_service.ultimas_llamadas_por_empleado`), para que la UI pinte
@@ -522,6 +525,134 @@ Verificado contra la URL pública con `Cache-Control: no-cache`:
 
 Rollback del frontend, si hiciera falta:
 `cd C:\Proyectos\rrhh\web\seguimiento & ren dist dist_malo & ren dist_prev_20260902-092716 dist`
+
+## Registro de actividad: la consulta del movimiento (2026-09-07)
+
+Pregunta del usuario: *"¿dónde podemos ver las respuestas que estuvo realizando Dorian?"*.
+No se podía. La app escribía sus 3 tablas desde el día 1 y **no tenía ninguna pantalla que
+las consultara**: sólo el historial *por persona*, que muestra `· registró: <nombre>` pero
+obliga a abrir fila por fila. El backend tampoco lo exponía — no había listado global ni
+filtro por `registrado_por`.
+
+Ahora hay una **segunda sección** en la app (no una 6ta pestaña) con una línea de tiempo
+unificada de los 3 logs, filtrable y exportable a Excel.
+
+Diseño y plan escritos antes del código, en `docs/superpowers/specs/` y
+`docs/superpowers/plans/` (`2026-09-07-registro-actividad*`). Decisiones tomadas con el
+usuario: los 3 logs (no sólo las llamadas); **una** línea de tiempo, no sub-pestañas por
+tipo; filtros de rango de fechas + quién registró + persona/CI, y **nada más** (tipo,
+indicador, resultado y medio quedaron como columnas visibles sin filtro, a pedido); nav en
+el encabezado en vez de `react-router`; y Excel de una sola hoja plana.
+
+### El `UNION ALL`, y por qué no un merge en Python
+
+`services/actividad_service.py` normaliza las 3 tablas a un esquema común
+(`tipo`, `id_registro`, `fecha`, `registrado_por`, `sujeto_*`, `indicador`, `resultado`,
+`medio`, `detalle`) con `UNION ALL`, y **una sola función arma el `WHERE`** que comparten la
+lista paginada, el `COUNT(*)` y el export. El motivo no es rendimiento sino correctitud: si
+el archivo armara su propia consulta, tarde o temprano traería filas que la pantalla no
+mostraba. Un merge en memoria además obligaría a traer las 3 tablas enteras en cada request
+— el defecto que `rrhh-app/backend/app/services/excel_service.py` documenta de su versión
+vieja.
+
+⚠️ **Cuatro cosas que no hay que "arreglar":**
+
+1. **El join del afiliador va por `empleado_unidad.id_empleado`, que es PK** → una fila, no
+   multiplica. Es un caso distinto del riesgo que documenta `supervisores_service.py`, donde
+   el problema era joinear por `id_persona` (ahí sí hay personas con más de una fila activa).
+2. **El nombre del supervisor sale del snapshot `supervisor_nombre`, no del join.** Si en
+   Lab 001 le corrigen el nombre, el historial tiene que seguir diciendo a quién se contactó.
+   El join a `persona` es sólo para el CI.
+3. **`ORDER BY fecha DESC, tipo, id_registro DESC`.** El desempate no es decorativo: con
+   `LIMIT/OFFSET` y sólo `fecha DESC`, dos registros del mismo instante pueden repetirse o
+   saltearse entre páginas.
+4. **`id_registro` NO es único entre tipos** — el de DISPONIBILIDAD es un `id_empleado`,
+   porque esa tabla no tiene id propio. La clave estable es el par `(tipo, id_registro)`.
+
+**`/registradores` no aplica los filtros de la pantalla**, a propósito: si respetara el rango
+de fechas, mover las fechas vaciaría el select y dejaría a quien busca sin poder elegir a
+nadie.
+
+**`por_pagina` se rechaza con 422 si supera 100, no se recorta en silencio.** Recortar
+999→100 mudo devuelve 100 filas que quien llama lee como el universo completo — el mismo
+problema que el aviso de recorte del export existe para evitar.
+
+⚠️ **`hasta` es INCLUSIVO** y se traduce a `< hasta + 1 día`, con offset **fijo UTC-4**
+(Bolivia no tiene horario de verano; el huso del servidor ataría el resultado a dónde corre
+el proceso). Con `<=` sobre la medianoche, "hasta el 7" dejaría afuera todo el 7. Probado con
+una fila sembrada a las 23:45 hora de Bolivia, que es el borde real.
+
+### Frontend
+
+- **`useActividadState` NO reusa `useAlertaListState`, y no hay que unificarlos.** Ese hook
+  filtra, ordena y pagina **en el cliente** sobre un array completo (`filtradas.slice(...)`);
+  esta lista pagina **en el servidor**. Doblarlo para los dos modos lo volvería condicional
+  en todos lados y pondría en riesgo las 5 pestañas que hoy funcionan. Es exactamente el tipo
+  de "esto parece duplicado" que alguien va a proponer unificar en seis meses.
+- **`App.jsx` pasa a tener el layout y la nav**; `SeguimientoPage` perdió su wrapper y su
+  `<h1>`. Las 5 pestañas **quedan montadas bajo `hidden`** al ir a la otra sección:
+  desmontarlas tiraría el filtro que quien trabaja tenía puesto.
+- **`lib/download.js`, `hooks/useExportarXlsx.js` y `ui/aviso-export.jsx` son copias de
+  `rrhh-app`**, igual que todo `components/ui/`. `services/excel_service.py` también, y se
+  verificó que es **byte a byte idéntico** después del docstring — incluido el detalle de que
+  **Excel no soporta datetimes con zona horaria** (openpyxl lanza `ValueError`), que allá ya
+  costó un error.
+- `DISPONIBILIDAD_LABEL` se **deriva** de `DISPONIBILIDADES` en `lib/disponibilidad.js`, no
+  se escribe a mano.
+
+⚠️ **`registrado_por` es texto libre** (no hay login, por diseño), así que la misma persona
+puede haber firmado de varias formas y el select mostrará una opción por cada una. Se
+devuelven **sin normalizar**, con su conteo: el filtro tiene que mostrar el problema, no
+esconderlo detrás de un `ILIKE` que adivine.
+
+⚠️ **`seguimiento_disponibilidad` no tiene historial** (una fila por empleado). Su rama de la
+línea de tiempo muestra la **última** confirmación de cada persona, no la secuencia de
+cambios.
+
+⚠️ **`openpyxl` está pineado en `3.1.5`, exactamente.** Es dependencia nueva y el venv de
+producción es **compartido** con `sistema-personal` y `web_validador_vetados`, que ya tienen
+ese pin; otro número se los cambia por debajo en el `uv pip install` del deploy.
+
+**Sin migraciones** — la primera entrega de esta app que no toca el esquema.
+
+### Verificado el 2026-09-07 (contra `rrhh_bd_dev`)
+
+Como las 3 tablas estaban **en 0 filas** en dev, se sembraron 12 filas de prueba variadas
+(3 registradores con cantidades distintas, fechas repartidas en dos meses, una a las 23:45
+hora de Bolivia) — sin ellas casi todas las aserciones pasan **por vacuidad**: un export de
+0 filas "coincide" con una pantalla de 0 filas sin haber probado nada. **Las filas se
+borraron al terminar** (las 3 tablas quedaron en 0).
+
+- `actividad_service`: el total es la suma de las 3 tablas, ninguna rama multiplica ni pierde
+  filas, la paginación no repite ni saltea, `hasta` inclusivo, y `registradores()` coincide
+  con un `GROUP BY` a mano.
+- Endpoints por HTTP real: 14 chequeos, incluido el borde de `por_pagina` (100 → 200,
+  101 y 999 → 422).
+- Excel: las 15 columnas en orden, encabezado congelado, `X-Total-Disponible` igual al total
+  de la pantalla, y **las 12 fechas** naive y sin correrse 4 horas (`2026-09-07T23:45:00-04:00`
+  → celda `2026-09-07 23:45:00`). El recorte se probó bajando el tope a 2:
+  `X-Filas-Exportadas: 2` / `X-Total-Disponible: 12`.
+- Render por SSR de `TablaActividad` con las 12 filas reales de la API: las dos vistas
+  (tarjeta y tabla) en el markup, los 3 badges de tipo, nombre y CI, y el mensaje de lista
+  vacía.
+- Las 4 rutas de alerta siguen respondiendo con datos (143 / 780 / 59 / 113 en dev ese día).
+- `npm run build` compila.
+
+⚠️ **Sin recorrido visual en navegador, otra vez.** La automatización de Chrome no llega a
+`localhost` en este entorno (cuarta sesión consecutiva). Falta un recorrido manual, sobre
+todo en teléfono.
+
+⚠️ **El render de los diálogos no se puede verificar por SSR**: van por un `Portal` de
+`@base-ui`, que devuelve markup vacío fuera del navegador. Vale para
+`DetalleActividadDialog` y para los diálogos que ya existían. Lo que se verificó en su lugar
+es que los datos que consumen son los correctos.
+
+⚠️ **La comprobación de venv de este archivo da un falso positivo en esta máquina.**
+`Get-Process -Id <pid> | Select Path` sobre el uvicorn muestra el Python **global** aunque se
+lo lance con el del venv, porque `venv\Scripts\python.exe` es el *venv launcher* de Windows y
+arranca el intérprete base ya configurado. Eso **no** es el fallo de `--reload` documentado
+más arriba. La señal confiable es la cadena padre→hijo (`Get-CimInstance Win32_Process`) o,
+más simple, que la app levante e importe `fastapi` (el Python global no puede).
 
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
