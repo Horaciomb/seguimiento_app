@@ -2,11 +2,17 @@
 
 **Qué es:** app web standalone, sin login, para que JP (y quien más lo use) registre el
 resultado real de las llamadas a los afiliadores que marcan los indicadores de control de
-`Lab 001 - Pasar a Datos` (`C:\temp\RRHH\Lab\001 - Pasar a Datos`). Hoy esos indicadores se
-entregan como Excel por OneDrive y nadie registra si se llamó, si contestó, o qué sigue —
+`Lab 001 - Pasar a Datos` (`C:\temp\RRHH\Lab\001 - Pasar a Datos`). El problema que vino a
+resolver: esos indicadores se entregan como Excel por OneDrive y **nadie registraba** si se
+llamó, si contestó, o qué sigue —
 salvo el indicador de inactividad, que tiene un dedup propio
 (`alerta_inactividad_notificacion`). Esta app generaliza esa idea a las tres fuentes, con un
 log de contacto real en vez de solo dedup.
+
+**Está en uso real desde el 2026-09-08** — ver §"En uso real: lo que muestran los primeros
+registros". Quien la usa no es JP sino **Dorian Gutiérrez**, y sólo sobre la pestaña de
+Turnos. Eso tiene consecuencias para cualquier cambio que se haga de acá en adelante: ya no
+es una app vacía donde romper algo no se nota.
 
 Desde el 2026-09-02 el contacto no es sólo al afiliador: la app también agrupa la alerta
 por **supervisor / líder a cargo** y registra el llamado de atención que se le hace a él por
@@ -683,10 +689,11 @@ deploy lo confirmó: `Checked 9 packages in 31ms`, sin instalar nada.
 Verificado contra la URL pública con `Cache-Control: no-cache`:
 
 - `/api/actividad` → 200 `{"items":[],"total":0}` y `/api/actividad/registradores` → 200 `[]`.
-  **0 filas es lo correcto**: `rrhh_bd` no tiene ningún contacto registrado todavía, y la
-  tabla se llena cuando alguien usa la app. Lo que prueba el deploy es que responde 200 y no
-  500 — o sea que el `UNION ALL` y sus JOIN a `persona`/`empleado_unidad` son válidos contra
-  el esquema de prod.
+  **0 filas era lo correcto ESE DÍA**: al 07-sep nadie había registrado nada en `rrhh_bd`
+  (verificado también por las secuencias: los 3 únicos inserts históricos eran las pruebas de
+  despliegue documentadas más arriba). Lo que probó el deploy es que responde 200 y no 500 —
+  o sea que el `UNION ALL` y sus JOIN a `persona`/`empleado_unidad` son válidos contra el
+  esquema de prod. **Ya no está vacía**: ver §"En uso real" más abajo.
 - `/api/actividad/export.xlsx` → 200, `Content-Disposition` con sello de tiempo,
   `X-Filas-Exportadas`/`X-Total-Disponible` y `Access-Control-Expose-Headers` presentes.
 - Bundle servido: `index-DJpJA-jL.js` → **`index-CK9afyEp.js`**, y contiene
@@ -742,6 +749,41 @@ intacta). El `.xlsx` bajado de la URL pública trae las 16 columnas con `Proyect
 94 filas sin vacíos. `npm run build` compila; bundle servido `index-CJr0-MNs.js`.
 
 Rollback del frontend: `ren dist dist_malo & ren dist_prev_20260911-145649 dist`
+
+## En uso real: lo que muestran los primeros registros (2026-09-11)
+
+Hasta el 07-sep la app estaba desplegada pero **nadie había registrado nada** (3 inserts
+históricos en toda su vida, los tres pruebas de despliegue). **El 08-sep arrancó el uso
+real.** Al 11-sep hay **94 registros, todos de `DORIAN GUTIERREZ`** — el único registrador.
+
+| | |
+|---|---|
+| 47 contactos a afiliadores + 47 disponibilidades | **Cada contacto trae su disponibilidad**: está usando el formulario completo, no a medias |
+| 8-sep 56 · 9-sep 30 · 10-sep 8 | Arrancó fuerte y viene bajando |
+| 42 contestaron · 5 no | 89% de contacto efectivo |
+| `YAPE` 76 · `ZAS` 18 | Dos proyectos |
+| Los 47 con próxima acción **y** con notas | Notas sustanciosas, no de trámite |
+
+**Sólo trabaja la pestaña de Turnos.** Inactividad, Reincidencia y Producción MTD no tienen
+ni un registro. Antes de suponer que las otras tres "no sirven", tener en cuenta que el
+umbral `< 5` de Turnos marca a ~90% de los medidos (§"Los 4 turnos"), así que esa pestaña
+sola ya le da más gente de la que puede llamar.
+
+⚠️ **La categoría `OTRO` es la más usada (18 de 47), por encima de `PERSONAL_FAMILIAR` (17).**
+Cuando la opción de escape gana, normalmente significa que al catálogo le falta una categoría
+real. `motivo_bajo_rendimiento` existe justamente para poder reportar "cuántos se van por X"
+sin leer notas a mano (§"Contacto por WhatsApp + motivo"), y con `OTRO` a la cabeza ese
+reporte pierde la mitad de su valor. **Antes de agregar una categoría, leer esas 18 notas**:
+si hay un patrón repetido, ahí está la que falta. Es un cambio de `CHECK` en la base + el
+`Literal` de `schemas.py` + el mapa de `RegistrarLlamadaDialog`.
+
+Distribución completa: `OTRO` 18 · `PERSONAL_FAMILIAR` 17 · `SALUD` 6 · `SIN_MOTIVO_CLARO` 2
+· `NO_LE_GUSTA_TURNO` 2 · `OTRO_TRABAJO` 1 · `DIFICULTAD_SISTEMA` 1.
+
+Las disponibilidades confirmadas empiezan a llenar el hueco del 79% "Sin dato"
+(§"Por qué el 79% queda en Sin dato"): 34 tiempo completo · 6 medio tiempo · 4 turno tarde ·
+3 no definido. Se está llenando por la vía que el usuario eligió en su momento —a través del
+formulario de contacto, con una conversación real detrás— y no por carga masiva.
 
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
