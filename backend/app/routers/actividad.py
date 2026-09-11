@@ -99,6 +99,7 @@ _COLUMNAS = [
     ("Tipo",                     lambda f: _TIPO_LABEL.get(f.get("tipo"), f.get("tipo"))),
     ("Persona / supervisor",     lambda f: f.get("sujeto_nombre")),
     ("CI",                       lambda f: f.get("sujeto_ci")),
+    ("Proyecto",                 lambda f: f.get("proyecto")),
     ("Indicador",                lambda f: _FUENTE_LABEL.get(f.get("indicador"), f.get("indicador"))),
     ("Resultado",                lambda f: f.get("resultado")),
     ("Medio",                    lambda f: f.get("medio")),

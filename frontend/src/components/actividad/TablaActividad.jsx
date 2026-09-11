@@ -84,6 +84,8 @@ export default function TablaActividad({ items, onVerDetalle }) {
             <div className="flex items-center justify-between gap-2">
               <CeldaResultado fila={f} />
               <span className="text-xs text-muted-foreground">
+                {f.proyecto ?? ''}
+                {f.proyecto && f.indicador ? ' · ' : ''}
                 {f.indicador ? FUENTE_LABEL[f.indicador] ?? f.indicador : ''}
               </span>
             </div>
@@ -102,6 +104,7 @@ export default function TablaActividad({ items, onVerDetalle }) {
               <TableHead>Fecha</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Persona / supervisor</TableHead>
+              <TableHead>Proyecto</TableHead>
               <TableHead>Indicador</TableHead>
               <TableHead>Resultado</TableHead>
               <TableHead>Quién registró</TableHead>
@@ -111,7 +114,7 @@ export default function TablaActividad({ items, onVerDetalle }) {
           <TableBody>
             {vacio && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   {mensajeVacio}
                 </TableCell>
               </TableRow>
@@ -128,6 +131,7 @@ export default function TablaActividad({ items, onVerDetalle }) {
                     <div className="text-xs text-muted-foreground font-mono tabular-nums">{f.sujeto_ci}</div>
                   )}
                 </TableCell>
+                <TableCell className="text-sm">{f.proyecto ?? '—'}</TableCell>
                 <TableCell className="text-sm">
                   {f.indicador ? FUENTE_LABEL[f.indicador] ?? f.indicador : '—'}
                 </TableCell>

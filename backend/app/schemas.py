@@ -209,6 +209,9 @@ class ActividadItemOut(BaseModel):
     sujeto_id: Optional[int] = None
     sujeto_nombre: Optional[str] = None
     sujeto_ci: Optional[str] = None
+    # Código de unidad y, si difiere, campaña: "YAPE", "BNB / BILLE". En un contacto a
+    # supervisor sale de su gente, y puede traer varios: "YAPE, ZAS".
+    proyecto: Optional[str] = None
     indicador: Optional[str] = None
     resultado: Optional[str] = None
     medio: Optional[str] = None

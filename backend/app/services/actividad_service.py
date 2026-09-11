@@ -23,6 +23,19 @@ _HUSO_BOLIVIA = timezone(timedelta(hours=-4))
 
 # Las 3 ramas, normalizadas. `detalle` lleva lo específico de cada tipo: tiparlo no le
 # compraría nada a un panel de sólo lectura, y así agregar un campo no cambia el esquema.
+# "Proyecto", igual que lo arma la pantalla de Seguimiento: el CÓDIGO de la unidad y, sólo
+# si la campaña difiere, `UNIDAD / CAMPANA` (`YAPE`, `ZAS`, `BNB / BILLE`).
+#
+# ⚠️ `codigo` y NO `nombre`: las 3 vistas de Lab 001 exponen el código, así que joinear el
+# nombre daría "YAPE - Afiliaciones QR BCP Bolivia / YAPE - Afiliaciones QR BCP" — largo,
+# redundante y DISTINTO de lo que la otra pantalla viene mostrando para la misma persona.
+_PROYECTO = """
+           CASE WHEN {un}.codigo IS NULL THEN NULL
+                WHEN {ca}.codigo IS NOT NULL AND {ca}.codigo <> {un}.codigo
+                     THEN {un}.codigo || ' / ' || {ca}.codigo
+                ELSE {un}.codigo END
+"""
+
 _CTE = """
 WITH actividad AS (
     SELECT 'AFILIADOR'::varchar AS tipo,
@@ -35,6 +48,7 @@ WITH actividad AS (
            sl.fuente            AS indicador,
            sl.resultado,
            sl.medio_contacto    AS medio,
+""" + _PROYECTO.format(un="un", ca="ca") + """ AS proyecto,
            jsonb_build_object(
                'motivo_bajo_rendimiento',   sl.motivo_bajo_rendimiento,
                'proxima_accion',            sl.proxima_accion,
@@ -44,6 +58,8 @@ WITH actividad AS (
     FROM seguimiento_llamada sl
     LEFT JOIN empleado_unidad eu ON eu.id_empleado = sl.id_empleado
     LEFT JOIN persona p          ON p.id_persona   = eu.id_persona
+    LEFT JOIN unidad_negocio un  ON un.id_unidad_negocio = eu.id_unidad_negocio
+    LEFT JOIN campana ca         ON ca.id_campana        = eu.id_campana
 
     UNION ALL
 
@@ -53,6 +69,7 @@ WITH actividad AS (
     SELECT 'SUPERVISOR'::varchar, scs.id, scs.fecha_contacto, scs.registrado_por,
            scs.id_persona_supervisor, scs.supervisor_nombre, ps.ci,
            scs.fuente, scs.resultado, scs.medio_contacto,
+           sp.proyecto,
            jsonb_build_object(
                'cantidad_afiliadores',      scs.cantidad_afiliadores,
                'afiliadores',               scs.afiliadores,
@@ -62,6 +79,28 @@ WITH actividad AS (
            )
     FROM seguimiento_contacto_supervisor scs
     LEFT JOIN persona ps ON ps.id_persona = scs.id_persona_supervisor
+    -- El proyecto de un contacto a supervisor sale de SU GENTE, no de él: el mensaje habla
+    -- de N afiliadores, que pueden ser de proyectos distintos ("YAPE, ZAS" si se mezclaron).
+    --
+    -- ⚠️ Decisión del usuario (2026-09-11) sabiendo el costo: esto resuelve el proyecto de
+    -- HOY de cada afiliador, no el que tenía el día del contacto. Es el único campo de esta
+    -- rama que NO queda congelado — `nombre` y `metrica` sí salen del snapshot. Si alguien
+    -- cambia de proyecto, el historial de supervisores se relee distinto.
+    --
+    -- El DISTINCT va en un subselect y no en el `string_agg`: Postgres sólo admite
+    -- `ORDER BY` sobre la misma expresión del DISTINCT dentro de un agregado.
+    LEFT JOIN LATERAL (
+        SELECT string_agg(p, ', ' ORDER BY p) AS proyecto
+        FROM (
+            SELECT DISTINCT
+""" + _PROYECTO.format(un="un2", ca="ca2") + """ AS p
+            FROM jsonb_array_elements(scs.afiliadores) a
+            JOIN empleado_unidad eu2     ON eu2.id_empleado       = (a->>'id_empleado')::bigint
+            LEFT JOIN unidad_negocio un2 ON un2.id_unidad_negocio = eu2.id_unidad_negocio
+            LEFT JOIN campana ca2        ON ca2.id_campana        = eu2.id_campana
+        ) d
+        WHERE p IS NOT NULL
+    ) sp ON TRUE
 
     UNION ALL
 
@@ -73,10 +112,13 @@ WITH actividad AS (
            NULLIF(TRIM(CONCAT_WS(' ', p2.nombres, p2.apellido_paterno, p2.apellido_materno)), ''),
            p2.ci,
            NULL::varchar, NULL::varchar, NULL::varchar,
+""" + _PROYECTO.format(un="un3", ca="ca3") + """,
            jsonb_build_object('disponibilidad', sd.disponibilidad)
     FROM seguimiento_disponibilidad sd
-    LEFT JOIN empleado_unidad eu2 ON eu2.id_empleado = sd.id_empleado
-    LEFT JOIN persona p2          ON p2.id_persona   = eu2.id_persona
+    LEFT JOIN empleado_unidad eu3 ON eu3.id_empleado = sd.id_empleado
+    LEFT JOIN persona p2          ON p2.id_persona   = eu3.id_persona
+    LEFT JOIN unidad_negocio un3  ON un3.id_unidad_negocio = eu3.id_unidad_negocio
+    LEFT JOIN campana ca3         ON ca3.id_campana        = eu3.id_campana
 )
 """
 
