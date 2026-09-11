@@ -706,6 +706,43 @@ arranca el intérprete base ya configurado. Eso **no** es el fallo de `--reload`
 más arriba. La señal confiable es la cadena padre→hijo (`Get-CimInstance Win32_Process`) o,
 más simple, que la app levante e importe `fastapi` (el Python global no puede).
 
+### Columna "Proyecto" en el registro de actividad (2026-09-11)
+
+Pedido del usuario tras hacer una exportación real: ver el proyecto **igual que en
+Seguimiento**, en pantalla y en el Excel. Desplegado el mismo día (`dev @ 11ba1e6`), sin
+migraciones.
+
+⚠️ **Se usa el `codigo` de `unidad_negocio`/`campana`, NO el `nombre`.** Las 3 vistas de
+Lab 001 exponen el código, así que la pantalla de Seguimiento viene mostrando `YAPE`,
+`ZAS`, `BNB / BILLE`. Joinear `nombre` —que es lo que sale natural— habría dado
+`YAPE - Afiliaciones QR BCP Bolivia / YAPE - Afiliaciones QR BCP`: largo, redundante y
+**distinto de lo que la otra pantalla muestra para la misma persona**. Se replica también la
+regla de colapso: la campaña sólo se agrega cuando difiere de la unidad.
+
+⚠️ **En un contacto a supervisor el proyecto sale de SU GENTE, no de él** — un `LEFT JOIN
+LATERAL` que abre el JSONB `afiliadores` y une los proyectos distintos con coma
+(`YAPE, ZAS`). Decisión del usuario tomada sabiendo el costo, que queda comentado en el
+código: **ese es el único campo de esa rama que NO queda congelado**, porque resuelve el
+proyecto de HOY de cada afiliador y no el que tenía el día del contacto. `nombre` y
+`metrica` sí salen del snapshot. Si alguien cambia de proyecto, el historial de supervisores
+se relee distinto.
+
+Detalle de implementación: el `DISTINCT` va en un subselect y no dentro del `string_agg`,
+porque Postgres sólo admite `ORDER BY` sobre la misma expresión del `DISTINCT` en un agregado.
+
+⚠️ **El `.xlsx` pasó de 15 a 16 columnas**, con `Proyecto` en la **5ta** (después de `CI`).
+Eso corre una posición todo lo que va de `Indicador` en adelante: una tabla dinámica armada
+sobre un archivo anterior tiene que apuntar a los encabezados, no a las letras de columna.
+
+Verificado contra `rrhh_bd` (con los 94 registros reales de Dorian): **el total sigue en 94**
+—o sea que ningún join nuevo multiplica filas—, las 94 resuelven proyecto sin vacíos
+(`YAPE 76 · ZAS 18`), el formato es el código corto, y el `LATERAL` se ejercitó insertando un
+contacto a supervisor **en una transacción revertida** (resolvió `YAPE`, una sola fila, prod
+intacta). El `.xlsx` bajado de la URL pública trae las 16 columnas con `Proyecto` en la 5ta y
+94 filas sin vacíos. `npm run build` compila; bundle servido `index-CJr0-MNs.js`.
+
+Rollback del frontend: `ren dist dist_malo & ren dist_prev_20260911-145649 dist`
+
 ## Migraciones aplicadas en `rrhh_bd` (producción)
 
 **Qué son y por qué existen:** `seguimiento_llamada`, `seguimiento_disponibilidad` y
